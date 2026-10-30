@@ -1,2 +1,2 @@
 name = 'features'
-deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.0']
+deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.1']

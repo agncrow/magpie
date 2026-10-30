@@ -12,7 +12,7 @@ a log of its own. Each answers the same in `crow run -i` and `crow run`,
 and `training` answers what pandas's `merge_asof` answers.
 
 ```
-deps = map[features = 'github.com/agncrow/magpie/packages/features@v0.1.0']
+deps = map[features = 'github.com/agncrow/magpie/packages/features@v0.1.1']
 ```
 
 `crow install` checks the package out into `crow_modules/features`, and the

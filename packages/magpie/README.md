@@ -13,7 +13,7 @@ other products' clients in: Kafka's protocol and Redis's. Every answer
 is the same in `crow run -i` and `crow run`.
 
 ```
-deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.0']
+deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.1']
 ```
 
 `crow install` checks the package out into `crow_modules/magpie`, and

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Pull requests
+    url: https://github.com/agncrow/magpie/blob/main/CONTRIBUTING.md
+    about: Magpie does not accept outside contributions yet; CONTRIBUTING.md says what is welcome instead.
+  - name: Commercial licenses
+    url: https://github.com/agncrow/magpie/blob/main/LICENSING.md
+    about: What the Business Source License allows for free, and when a commercial license is needed.

@@ -1,0 +1,25 @@
+# Magpie does not accept outside contributions yet (CONTRIBUTING.md): each
+# pull request is closed at once with the note, so nobody waits on it.
+# Nothing of the pull request is checked out or run.
+name: Pull requests
+on:
+  pull_request_target:
+    types: [opened]
+permissions:
+  pull-requests: write
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          NOTE: >-
+            Thank you for the pull request. Magpie does not accept outside
+            contributions yet: a contributor license agreement will come
+            first, so that every line can be offered both under its source
+            license and under a commercial one (CONTRIBUTING.md). A bug
+            report with the program that shows it, or a question, is
+            welcome in Issues.
+        run: gh pr close "$PR" --repo "$REPO" --comment "$NOTE"

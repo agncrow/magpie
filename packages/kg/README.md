@@ -8,7 +8,7 @@ subgraph handed to the `graph` package for pagerank, components and
 shortest paths. Each answers the same in `crow run -i` and `crow run`.
 
 ```
-deps = map[kg = 'github.com/agncrow/magpie/packages/kg@v0.1.0']
+deps = map[kg = 'github.com/agncrow/magpie/packages/kg@v0.1.1']
 ```
 
 `crow install` checks the package out into `crow_modules/kg`, and the
