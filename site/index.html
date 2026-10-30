@@ -1,0 +1,1713 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Introducing Magpie: One engine for the many ways you read data</title>
+<meta name="description" content="Tables, streams, search, and vectors from one ordered history of writes.">
+<link rel="canonical" href="https://agncrow.github.io/magpie/">
+<link rel="icon" type="image/svg+xml" href="magpie.svg">
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Magpie">
+<meta property="og:title" content="Introducing Magpie: One engine for the many ways you read data">
+<meta property="og:description" content="Tables, streams, search, and vectors from one ordered history of writes.">
+<meta property="og:url" content="https://agncrow.github.io/magpie/">
+<meta property="og:image" content="https://agncrow.github.io/magpie/magpie-social.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="The Magpie icon, Crow's (o.o) face over a row of amber dashes, beside the name Magpie">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (68ch) for prose; figures and tables widen to 1040px. A technical blueprint: cool grey-green neutrals, an ink-blue accent for reads, amber reserved for the log, the one thing every part hangs on. */
+:root {
+  --bg: #f6f7f5; --panel: #ffffff; --fg: #1b2126; --muted: #56626b; --line: #d3d9d6;
+  --accent: #1f5f8b; --accent-soft: #e4eef6; --log: #a8680a; --log-soft: #fbefd9;
+  --band: rgba(27,33,38,0.04); --bad: #b3261e; --bad-soft: #fbe9e7;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191c; --panel: #1c2226; --fg: #e5e9e8; --muted: #9ba6ad; --line: #2e373d;
+  --accent: #7bb8e4; --accent-soft: #1d3140; --log: #e8a53c; --log-soft: #3a2c12;
+  --band: rgba(229,233,232,0.05); --bad: #f2938c; --bad-soft: #3d1f1d; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15191c; --panel: #1c2226; --fg: #e5e9e8; --muted: #9ba6ad; --line: #2e373d;
+  --accent: #7bb8e4; --accent-soft: #1d3140; --log: #e8a53c; --log-soft: #3a2c12;
+  --band: rgba(229,233,232,0.05); --bad: #f2938c; --bad-soft: #3d1f1d; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 17px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 96px; }
+main { max-width: 1040px; margin: 0 auto; }
+.prose { max-width: 68ch; }
+h1, h2, h3, h4 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(30px, 4.4vw, 44px); font-weight: 700; letter-spacing: -0.01em; max-width: 24ch; }
+.part { margin-top: 112px; padding-top: 22px; border-top: 4px solid var(--log); max-width: 68ch; }
+.part .part-num { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--log); }
+.part h2 { font-size: clamp(28px, 3.6vw, 36px); font-weight: 700; margin-top: 8px; }
+.part p { color: var(--muted); font-size: 18px; margin: 10px 0 0; }
+h3 { font-size: 27px; font-weight: 600; margin-top: 72px; padding-top: 18px; border-top: 2px solid var(--fg); }
+.part + section > h3 { margin-top: 44px; }
+h4 { font-size: 19px; font-weight: 600; margin-top: 32px; }
+p { margin: 14px 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+header { padding-block: 52px 8px; }
+header .mark { display: block; width: 64px; height: 64px; margin-bottom: 22px; }
+header h1 { margin-top: 10px; }
+header .subtitle { font-family: var(--display); font-weight: 500; font-size: clamp(18px, 2.3vw, 22px); line-height: 1.3; color: var(--fg); opacity: 0.82; max-width: 46ch; margin-top: 14px; text-wrap: balance; }
+header .lede { font-size: 20px; color: var(--muted); max-width: 62ch; margin-top: 20px; }
+header .intro { max-width: 68ch; margin-top: 14px; }
+header .intro.key { font-size: 18px; }
+nav.toc { margin-top: 32px; max-width: 900px; font-size: 15px; columns: 2; column-gap: 40px; }
+nav.toc .toc-part { break-inside: avoid; margin-bottom: 18px; }
+nav.toc a.toc-head { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--log); border-bottom: 2px solid var(--log); padding-bottom: 5px; }
+nav.toc a { display: block; color: var(--fg); text-decoration: none; padding: 4px 0; border-bottom: 1px solid var(--line); break-inside: avoid; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--band); padding: 1px 5px; border-radius: 3px; }
+pre { font-family: var(--mono); font-size: 13.5px; line-height: 1.55; background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; border-radius: 4px; overflow-x: auto; margin: 16px 0; }
+pre code { background: none; padding: 0; font-size: inherit; }
+.codepair { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.codepair .label { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 -8px; }
+figure { margin: 30px 0; }
+figure .scroll { overflow-x: auto; }
+figure svg { max-width: 100%; height: auto; display: block; min-width: 660px; font-family: var(--body); color: var(--fg); }
+figcaption { font-size: 15px; color: var(--muted); margin-top: 10px; max-width: 70ch; }
+.tag { display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; margin-right: 8px; color: var(--muted); vertical-align: 1px; }
+.tag.measured { color: var(--accent); border-color: var(--accent); }
+svg .box { fill: var(--panel); stroke: currentColor; stroke-width: 1.1; }
+svg .soft { fill: var(--band); stroke: var(--line); stroke-width: 1; }
+svg .dashed { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 5 4; }
+svg .bandlabel { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; fill: var(--muted); }
+svg .t { font-size: 13px; fill: currentColor; }
+svg .tt { font-size: 13.5px; font-weight: 600; fill: currentColor; }
+svg .t2 { font-size: 11.5px; fill: var(--muted); }
+svg .lab { font-size: 11px; fill: var(--muted); font-family: var(--mono); }
+svg .num { font-size: 12px; font-weight: 600; fill: var(--panel); font-family: var(--mono); }
+svg .dot { fill: var(--accent); }
+svg .logbox { fill: var(--log-soft); stroke: var(--log); stroke-width: 1.6; }
+svg .logt { font-size: 14px; font-weight: 600; fill: currentColor; font-family: var(--display); }
+svg .accbox { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+svg .chunk { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; }
+svg .filt { fill: var(--log-soft); stroke: var(--log); stroke-width: 1; }
+svg .edge { stroke: currentColor; stroke-width: 1.2; fill: none; }
+svg .edge.log { stroke: var(--log); stroke-width: 1.6; }
+svg .edge.read { stroke: var(--accent); stroke-dasharray: 4 3; }
+svg .mk { fill: currentColor; }
+svg .mk-log { fill: var(--log); }
+svg .mk-acc { fill: var(--accent); }
+svg .mk-muted { fill: var(--muted); }
+svg .edge.muted { stroke: var(--muted); stroke-dasharray: 3 3; }
+svg .edge.acc { stroke: var(--accent); stroke-width: 1.6; }
+svg .guide { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 4; }
+svg .labelbg { fill: var(--bg); }
+svg .badbox { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1.2; }
+svg .badt { font-size: 13.5px; font-weight: 600; fill: var(--bad); }
+svg .divider { stroke: var(--line); stroke-width: 1; }
+svg .edge.tangle { stroke: var(--log); stroke-width: 1.6; stroke-linecap: round; opacity: 0.85; }
+header figure { margin-top: 34px; }
+.tablewrap { overflow-x: auto; margin: 20px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 15.5px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-top: 1px solid var(--line); }
+th { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-top: 0; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.prose-table { max-width: 860px; }
+.tablecap { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+ul.plain, ol.plain { max-width: 68ch; padding-left: 22px; }
+ul.plain li, ol.plain li { margin: 7px 0; }
+.note { font-size: 15px; color: var(--muted); max-width: 68ch; }
+.closing { margin-top: 28px; padding: 18px 22px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--log); max-width: 68ch; }
+.closing p { margin: 0; }
+@media (max-width: 720px) {
+  .codepair { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  nav.toc { columns: 1; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <svg class="mark" viewBox="0 0 256 256" width="64" height="64" role="img" aria-label="Magpie"><rect width="256" height="256" rx="56" fill="#f6f7f9"/><g fill="#0f1317"><g transform="translate(23.19 130.83) scale(0.034 -0.034)"><path transform="translate(0 0)" d="M924 1554Q792 1315 728.0 1091.0Q664 867 664 643Q664 421 728.0 195.5Q792 -30 924 -270H696Q537 -39 460.0 185.5Q383 410 383 643Q383 875 460.5 1100.5Q538 1326 696 1554Z"/><path transform="translate(1233 0)" d="M616 909Q511 909 451.0 816.5Q391 724 391 559Q391 394 451.0 301.5Q511 209 616 209Q722 209 782.0 301.5Q842 394 842 559Q842 724 782.0 816.5Q722 909 616 909ZM98 559Q98 830 238.5 988.5Q379 1147 616 1147Q854 1147 994.5 988.5Q1135 830 1135 559Q1135 288 994.5 129.5Q854 -29 616 -29Q379 -29 238.5 129.5Q98 288 98 559Z"/><path transform="translate(2466 0)" d="M449 367H782V0H449Z"/><path transform="translate(3699 0)" d="M616 909Q511 909 451.0 816.5Q391 724 391 559Q391 394 451.0 301.5Q511 209 616 209Q722 209 782.0 301.5Q842 394 842 559Q842 724 782.0 816.5Q722 909 616 909ZM98 559Q98 830 238.5 988.5Q379 1147 616 1147Q854 1147 994.5 988.5Q1135 830 1135 559Q1135 288 994.5 129.5Q854 -29 616 -29Q379 -29 238.5 129.5Q98 288 98 559Z"/><path transform="translate(4932 0)" d="M309 1554H537Q695 1326 772.5 1100.5Q850 875 850 643Q850 410 773.0 185.5Q696 -39 537 -270H309Q441 -30 505.0 195.5Q569 421 569 643Q569 867 505.0 1091.0Q441 1315 309 1554Z"/></g></g><g fill="#e8a940"><rect x="39.22" y="162.01" width="28.31" height="12" rx="4"/><rect x="76.53" y="162.01" width="28.31" height="12" rx="4"/><rect x="113.84" y="162.01" width="28.31" height="12" rx="4"/><rect x="151.16" y="162.01" width="28.31" height="12" rx="4"/><rect x="188.47" y="162.01" width="28.31" height="12" rx="4"/></g></svg>
+  <div class="eyebrow">Data systems · October 2026</div>
+  <h1>Introducing Magpie: One engine for the many ways you read data</h1>
+  <p class="subtitle">Tables, streams, search, and vectors from one ordered history of writes</p>
+  <p class="lede">An application often needs several ways to read the same data. It needs the current value of a record, the events that changed it, a search over its text, an aggregate over its columns, and perhaps the nearest embedding.</p>
+  <p class="intro">Those needs commonly lead to several systems, each holding its own representation of the data. The application then takes responsibility for moving updates between them, tracking their progress, and deciding what to do when they disagree.</p>
+  <p class="intro key"><b>Magpie brings these reads into one storage engine.</b> Every write enters an ordered log. From the same underlying files, a program can read current state, consume changes, search text, find nearest vectors, compute grouped aggregates, and build point-in-time joins.</p>
+  <p class="intro">Magpie is written entirely in Crow and used as a Crow package. A log is a directory of immutable files. HTTP, Redis, and Kafka interfaces make selected capabilities available to other clients. Two packages built on the same engine ship with it: a knowledge graph and a machine-learning feature store.</p>
+  <p class="intro">The central design question is simple: how much can an application do with one ordered history of writes and one storage layout?</p>
+
+  <figure>
+  <div class="scroll">
+  <svg viewBox="0 0 1040 552" role="img" aria-label="Two panels. Left, several systems: an application writes to PostgreSQL, and sync jobs, change data capture and cache invalidation copy the data into Kafka, Elasticsearch, Redis, ClickHouse, a vector database, a graph database and a feature store, each holding its own copy. Right, Magpie: the application writes once into one engine. Its interfaces, for reads and writes alike, are Crow calls, HTTP, the Redis protocol and the Kafka protocol. A knowledge graph and an ML feature store are built on the engine, whose operations serve current state, change streams, full-text search, vector search, analytics, point-in-time joins and transactions from one ordered log in one file format.">
+  <defs>
+    <marker id="m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="m6l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="m6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="box" x="185" y="20" width="140" height="40" rx="3"/>
+  <text class="tt" x="255" y="45" text-anchor="middle">Application</text>
+  <line class="edge log" x1="220" y1="60" x2="94" y2="134" marker-end="url(#m6l)"/>
+  <text class="lab" x="140" y="86" text-anchor="end">writes</text>
+
+  <path class="edge tangle" d="M72,207 C140,310 380,248 438,360"/>
+  <path class="edge tangle" d="M194,207 C90,273 120,323 72,360"/>
+  <path class="edge tangle" d="M316,207 C250,341 150,254 194,360"/>
+  <path class="edge tangle" d="M72,207 C200,260 290,316 316,360"/>
+  <path class="edge tangle" d="M438,207 C380,316 260,273 316,360"/>
+  <path class="edge tangle" d="M194,207 C300,292 470,260 438,360"/>
+  <path class="edge tangle" d="M50,283 C100,233 150,333 200,278 S300,226 340,283 S420,323 470,270"/>
+  <line class="edge tangle" x1="124" y1="173" x2="142" y2="173"/>
+  <line class="edge tangle" x1="246" y1="173" x2="264" y2="173"/>
+  <line class="edge tangle" x1="368" y1="173" x2="386" y2="173"/>
+  <line class="edge tangle" x1="124" y1="393" x2="142" y2="393"/>
+  <line class="edge tangle" x1="246" y1="393" x2="264" y2="393"/>
+  <line class="edge tangle" x1="368" y1="393" x2="386" y2="393"/>
+
+  <path class="box" d="M20,148 L20,198 A52,8 0 0 0 124,198 L124,148"/><ellipse class="box" cx="72" cy="148" rx="52" ry="8"/>
+  <text class="tt" x="72" y="176" text-anchor="middle">PostgreSQL</text><text class="t2" x="72" y="192" text-anchor="middle">transactions</text>
+  <path class="box" d="M142,148 L142,198 A52,8 0 0 0 246,198 L246,148"/><ellipse class="box" cx="194" cy="148" rx="52" ry="8"/>
+  <text class="tt" x="194" y="176" text-anchor="middle">Kafka</text><text class="t2" x="194" y="192" text-anchor="middle">event streams</text>
+  <path class="box" d="M264,148 L264,198 A52,8 0 0 0 368,198 L368,148"/><ellipse class="box" cx="316" cy="148" rx="52" ry="8"/>
+  <text class="tt" x="316" y="176" text-anchor="middle">Elasticsearch</text><text class="t2" x="316" y="192" text-anchor="middle">full-text search</text>
+  <path class="box" d="M386,148 L386,198 A52,8 0 0 0 490,198 L490,148"/><ellipse class="box" cx="438" cy="148" rx="52" ry="8"/>
+  <text class="tt" x="438" y="176" text-anchor="middle">Redis</text><text class="t2" x="438" y="192" text-anchor="middle">cache</text>
+  <path class="box" d="M20,368 L20,418 A52,8 0 0 0 124,418 L124,368"/><ellipse class="box" cx="72" cy="368" rx="52" ry="8"/>
+  <text class="tt" x="72" y="396" text-anchor="middle">ClickHouse</text><text class="t2" x="72" y="412" text-anchor="middle">analytics</text>
+  <path class="box" d="M142,368 L142,418 A52,8 0 0 0 246,418 L246,368"/><ellipse class="box" cx="194" cy="368" rx="52" ry="8"/>
+  <text class="tt" x="194" y="396" text-anchor="middle">Vector DB</text><text class="t2" x="194" y="412" text-anchor="middle">embeddings</text>
+  <path class="box" d="M264,368 L264,418 A52,8 0 0 0 368,418 L368,368"/><ellipse class="box" cx="316" cy="368" rx="52" ry="8"/>
+  <text class="tt" x="316" y="396" text-anchor="middle">Graph DB</text><text class="t2" x="316" y="412" text-anchor="middle">relationships</text>
+  <path class="box" d="M386,368 L386,418 A52,8 0 0 0 490,418 L490,368"/><ellipse class="box" cx="438" cy="368" rx="52" ry="8"/>
+  <text class="tt" x="438" y="396" text-anchor="middle">Feature store</text><text class="t2" x="438" y="412" text-anchor="middle">ML features</text>
+
+  <rect class="labelbg" x="133" y="272" width="244" height="22" rx="3"/>
+  <text class="lab" x="255" y="287" text-anchor="middle">sync jobs · CDC · cache invalidation</text>
+
+  <text class="tt" x="255" y="520" text-anchor="middle">Several systems</text>
+  <text class="t2" x="255" y="538" text-anchor="middle">a copy of the data in each, kept in sync by the application</text>
+
+  <line class="divider" x1="520" y1="20" x2="520" y2="540"/>
+
+  <rect class="box" x="720" y="20" width="140" height="40" rx="3"/>
+  <text class="tt" x="790" y="45" text-anchor="middle">Application</text>
+  <line class="edge log" x1="768" y1="60" x2="768" y2="104" marker-end="url(#m6l)"/>
+  <text class="lab" x="760" y="87" text-anchor="end">writes once</text>
+  <line class="edge read" x1="812" y1="104" x2="812" y2="62" marker-end="url(#m6a)"/>
+  <text class="lab" x="820" y="87">reads many ways</text>
+
+  <rect class="box" x="600" y="106" width="380" height="386" rx="4"/>
+  <text class="logt" x="790" y="132" text-anchor="middle">Magpie</text>
+  <text class="bandlabel" x="614" y="154">Interfaces · read and write</text>
+  <rect class="box" x="614" y="162" width="82" height="28" rx="3"/><text class="t" x="655" y="181" text-anchor="middle">Crow calls</text>
+  <rect class="box" x="704" y="162" width="82" height="28" rx="3"/><text class="t" x="745" y="181" text-anchor="middle">HTTP</text>
+  <rect class="box" x="794" y="162" width="82" height="28" rx="3"/><text class="t" x="835" y="181" text-anchor="middle">Redis</text>
+  <rect class="box" x="884" y="162" width="82" height="28" rx="3"/><text class="t" x="925" y="181" text-anchor="middle">Kafka</text>
+  <text class="bandlabel" x="614" y="212">Built on the engine</text>
+  <rect class="box" x="614" y="220" width="170" height="38" rx="3"/>
+  <text class="tt" x="626" y="236">Knowledge graph</text><text class="t2" x="626" y="251">graph walks, as-of reads</text>
+  <rect class="box" x="796" y="220" width="170" height="38" rx="3"/>
+  <text class="tt" x="808" y="236">ML feature store</text><text class="t2" x="808" y="251">online, offline, training</text>
+  <text class="bandlabel" x="614" y="280">The engine</text>
+  <rect class="accbox" x="614" y="288" width="170" height="38" rx="3"/>
+  <text class="tt" x="626" y="304">Current state</text><text class="t2" x="626" y="319">latest, lookup</text>
+  <rect class="accbox" x="796" y="288" width="170" height="38" rx="3"/>
+  <text class="tt" x="808" y="304">Change streams</text><text class="t2" x="808" y="319">since, tail</text>
+  <rect class="accbox" x="614" y="334" width="170" height="38" rx="3"/>
+  <text class="tt" x="626" y="350">Full-text search</text><text class="t2" x="626" y="365">search</text>
+  <rect class="accbox" x="796" y="334" width="170" height="38" rx="3"/>
+  <text class="tt" x="808" y="350">Vector search</text><text class="t2" x="808" y="365">nearest</text>
+  <rect class="accbox" x="614" y="380" width="170" height="38" rx="3"/>
+  <text class="tt" x="626" y="396">Analytics</text><text class="t2" x="626" y="411">summary</text>
+  <rect class="accbox" x="796" y="380" width="170" height="38" rx="3"/>
+  <text class="tt" x="808" y="396">Point-in-time joins</text><text class="t2" x="808" y="411">prior</text>
+  <rect class="accbox" x="614" y="426" width="352" height="26" rx="3"/>
+  <text class="tt" x="626" y="444">Transactions</text><text class="t2" x="722" y="444">commit, checked against the keys it read</text>
+  <rect class="logbox" x="614" y="458" width="352" height="26" rx="3"/>
+  <text class="tt" x="790" y="476" text-anchor="middle">One ordered log · one file format</text>
+
+  <text class="tt" x="790" y="520" text-anchor="middle">One engine</text>
+  <text class="t2" x="790" y="538" text-anchor="middle">every write enters one ordered log, read in several ways</text>
+  </svg>
+  </div>
+  <figcaption><span class="tag">Illustrative</span>Left: a common arrangement, with a copy of the data in each system and the application keeping the copies in sync. Right: Magpie serves the same kinds of reads from one ordered log. Crow programs call it directly, and HTTP, Redis and Kafka clients read and write through the protocols it implements; its knowledge graph and feature store are built on the same engine. It does not reproduce every feature of each system; its current limits are listed under <a href="#fits">Where Magpie fits</a>.</figcaption>
+  </figure>
+
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-part"><a class="toc-head" href="#part1">Part 1 · The idea</a>
+      <a href="#reads">One write, several ways to read</a>
+    </div>
+    <div class="toc-part"><a class="toc-head" href="#part2">Part 2 · Storage and consistency</a>
+      <a href="#storage">The storage design</a>
+      <a href="#format">Magpie's own file format</a>
+      <a href="#durability">Visibility, durability, and snapshots</a>
+      <a href="#merge">What a merge changes</a>
+      <a href="#transactions">Transactions over keys</a>
+    </div>
+    <div class="toc-part"><a class="toc-head" href="#part3">Part 3 · Querying the log</a>
+      <a href="#inside">Current state and change streams</a>
+      <a href="#search">Full-text search</a>
+      <a href="#vectors">Vector search</a>
+      <a href="#analytics">Analytics and point-in-time joins</a>
+    </div>
+    <div class="toc-part"><a class="toc-head" href="#part4">Part 4 · Packages and protocols</a>
+      <a href="#packages">A knowledge graph and an ML feature store</a>
+      <a href="#clients">Three network protocols: HTTP, Redis, and Kafka</a>
+      <a href="#redis">The Redis protocol</a>
+      <a href="#kafka">The Kafka protocol</a>
+    </div>
+    <div class="toc-part"><a class="toc-head" href="#part5">Part 5 · In practice</a>
+      <a href="#measurements">Early measurements</a>
+      <a href="#example">A small example</a>
+      <a href="#fits">Where Magpie fits</a>
+      <a href="#availability">Availability</a>
+    </div>
+  </nav>
+</header>
+
+<div class="part" id="part1">
+<div class="part-num">Part 1</div>
+<h2>The idea</h2>
+<p>One example that shows what Magpie does.</p>
+</div>
+
+<section id="reads">
+<h3>One write, several ways to read</h3>
+<div class="prose">
+<p>Consider an application that stores orders. Each order has an identifier, an item, a description, a quantity, and an embedding of its description for similarity search.</p>
+<p>When an order changes, Magpie appends a new row and assigns it a position. The position establishes where that write belongs in the log.</p>
+<p>The application can then ask different questions about those writes:</p>
+</div>
+<div class="tablewrap">
+<table class="prose-table">
+<thead><tr><th>Question</th><th>Magpie operation</th><th>Explained in</th></tr></thead>
+<tbody>
+<tr><td>What is the current state of each order?</td><td><code>latest</code></td><td><a href="#inside">Current state and change streams</a></td></tr>
+<tr><td>Which versions of this order remain in the log?</td><td><code>lookup</code></td><td><a href="#inside">Current state and change streams</a></td></tr>
+<tr><td>What changed after this position?</td><td><code>since</code> or <code>tail</code></td><td><a href="#inside">Current state and change streams</a></td></tr>
+<tr><td>Which descriptions match these words?</td><td><code>search</code></td><td><a href="#search">Full-text search</a></td></tr>
+<tr><td>Which orders are most similar to this one, by embedding?</td><td><code>nearest</code></td><td><a href="#vectors">Vector search</a></td></tr>
+<tr><td>What is the total quantity of each item?</td><td><code>summary</code></td><td><a href="#analytics">Analytics and point-in-time joins</a></td></tr>
+<tr><td>What did each order look like at a given moment?</td><td><code>prior</code></td><td><a href="#analytics">Analytics and point-in-time joins</a></td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p>These operations share the stored data. An update does not need to be copied into a separate search service or analytics database before those readers can use it.</p>
+<p>Retention is an explicit choice. A log can retain every row, or merging can compact it to the newest version of each key. That choice determines how much history remains available.</p>
+</div>
+</section>
+
+<div class="part" id="part2">
+<div class="part-num">Part 2</div>
+<h2>Storage and consistency</h2>
+<p>How a write becomes a durable file, how files are laid out and compacted, and how transactions are checked.</p>
+</div>
+
+<section id="storage">
+<h3>The storage design</h3>
+<div class="prose">
+<p>Magpie organizes storage around three components: a sequencer, immutable batch files, and merged segments.</p>
+<p>The <b>sequencer</b> lives in memory. It assigns positions, holds pending writes, checks transaction conflicts, and maintains an index of the newest row for each key when needed.</p>
+<p>A flush writes pending rows into a <b>batch file</b>. Each batch carries the rows' positions, sorts the rows by the log's keys, and stores them in columnar row groups.</p>
+<p>A <b>merge</b> combines files into larger sorted segments. It can discard superseded versions and builds full-text postings into the resulting segments.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 548" role="img" aria-label="Magpie's components in one process. Clients: Crow programs and pages, HTTP, Redis and Kafka clients through three servers, and files and S3. Crow programs: queries, transactions, consumers and policy. The sequencer in memory: positions, rows not yet flushed, each key's last position and newest row. The log on disk: batch files and the manifest. The store on disk: merged segments in levels, and backups. A dashed band shows what a second machine adds.">
+<defs>
+  <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m2l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="soft" x="10" y="16" width="1020" height="82" rx="3"/>
+<text class="bandlabel" x="24" y="61">Clients</text>
+<rect class="box" x="170" y="30" width="250" height="54" rx="3"/>
+<text class="tt" x="182" y="51">Crow programs and pages</text>
+<text class="t2" x="182" y="70">the same process, or another by URL</text>
+<rect class="box" x="440" y="30" width="310" height="54" rx="3"/>
+<text class="tt" x="452" y="51">HTTP, Redis and Kafka clients</text>
+<text class="t2" x="452" y="70">through three servers written in Crow</text>
+<rect class="box" x="770" y="30" width="240" height="54" rx="3"/>
+<text class="tt" x="782" y="51">Files and S3</text>
+<text class="t2" x="782" y="70">CSV, Parquet, JSON; backups</text>
+
+<rect class="soft" x="10" y="112" width="1020" height="100" rx="3"/>
+<text class="bandlabel" x="24" y="158">Crow</text>
+<text class="bandlabel" x="24" y="172">programs</text>
+<rect class="box" x="170" y="128" width="190" height="68" rx="3"/>
+<text class="tt" x="182" y="148">Queries</text>
+<text class="t2" x="182" y="166">table operations over reads;</text>
+<text class="t2" x="182" y="181">four run inside the reader</text>
+<rect class="box" x="383" y="128" width="190" height="68" rx="3"/>
+<text class="tt" x="395" y="148">Transactions</text>
+<text class="t2" x="395" y="166">keys read and rows written,</text>
+<text class="t2" x="395" y="181">checked in memory</text>
+<rect class="box" x="596" y="128" width="190" height="68" rx="3"/>
+<text class="tt" x="608" y="148">Consumers</text>
+<text class="t2" x="608" y="166">follow the log with since</text>
+<text class="t2" x="608" y="181">and tail, from a position</text>
+<rect class="box" x="809" y="128" width="201" height="68" rx="3"/>
+<text class="tt" x="821" y="148">Policy</text>
+<text class="t2" x="821" y="166">merges and retention,</text>
+<text class="t2" x="821" y="181">servers, backup, followers</text>
+
+<rect class="soft" x="10" y="226" width="1020" height="80" rx="3"/>
+<text class="bandlabel" x="24" y="270">Sequencer</text>
+<rect class="logbox" x="170" y="240" width="840" height="52" rx="3"/>
+<text class="logt" x="590" y="261" text-anchor="middle">In memory, per log: positions, pending rows, each key's last position and newest row</text>
+<text class="t2" x="590" y="281" text-anchor="middle">a put gets its position at once · a commit is checked here · pending rows are flushed as one batch file</text>
+
+<rect class="soft" x="10" y="320" width="1020" height="80" rx="3"/>
+<text class="bandlabel" x="24" y="364">Batch files</text>
+<rect class="logbox" x="170" y="334" width="840" height="52" rx="3"/>
+<text class="logt" x="590" y="355" text-anchor="middle">Immutable batch files, numbered in arrival order · the manifest, replaced atomically</text>
+<text class="t2" x="590" y="375" text-anchor="middle">each file is a log entry and a sorted, columnar segment with statistics · a snapshot is a position</text>
+
+<rect class="soft" x="10" y="414" width="1020" height="80" rx="3"/>
+<text class="bandlabel" x="24" y="458">Segments</text>
+<rect class="box" x="170" y="428" width="410" height="52" rx="3"/>
+<text class="tt" x="182" y="449">Merged segments in levels</text>
+<text class="t2" x="182" y="468">same format, at most 1 GB each, with full-text postings</text>
+<rect class="box" x="600" y="428" width="410" height="52" rx="3"/>
+<text class="tt" x="612" y="449">Backups</text>
+<text class="t2" x="612" y="468">the live files plus a listing written last, to a folder or S3</text>
+
+<rect class="dashed" x="10" y="506" width="1020" height="34" rx="3"/>
+<text class="bandlabel" x="24" y="528">Follower</text>
+<text class="t2" x="170" y="528">an asynchronous follower fetches the immutable files and reads them with the same operations · promotion is manual</text>
+
+<line class="edge log" x1="265" y1="84" x2="265" y2="126" marker-end="url(#m2l)"/>
+<text class="lab" x="273" y="110">write</text>
+<line class="edge read" x1="330" y1="126" x2="330" y2="86" marker-end="url(#m2a)"/>
+<text class="lab" x="338" y="110">read</text>
+<line class="edge log" x1="478" y1="196" x2="478" y2="238" marker-end="url(#m2l)"/>
+<text class="lab" x="486" y="222">put, batch, commit</text>
+<line class="edge log" x1="590" y1="84" x2="590" y2="126" marker-end="url(#m2l)"/>
+<text class="lab" x="598" y="110">a client's write</text>
+<line class="edge log" x1="590" y1="292" x2="590" y2="332" marker-end="url(#m2l)"/>
+<text class="lab" x="598" y="317">flush: one file, synced</text>
+<line class="edge log" x1="370" y1="386" x2="370" y2="426" marker-end="url(#m2l)"/>
+<text class="lab" x="378" y="411">merge</text>
+<line class="edge" x1="800" y1="386" x2="800" y2="426" marker-end="url(#m2)"/>
+<text class="lab" x="808" y="411">copy</text>
+<polyline class="edge read" points="168,266 148,266 148,162 168,162" marker-end="url(#m2a)"/>
+<polyline class="edge read" points="168,360 148,360 148,266"/>
+<polyline class="edge read" points="168,454 148,454 148,360"/>
+<text class="lab" x="140" y="380" text-anchor="middle" transform="rotate(-90 140 380)">read at a snapshot</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>Writes flow down through the amber layers: into the sequencer, into a batch file at each flush, and into merged segments when the program merges. Reads go up from the segments, the batch files and the sequencer's pending rows.</figcaption>
+</figure>
+<div class="prose">
+<p>Batch files and segments use the same format. Each file supports several access patterns:</p>
+<ul class="plain">
+<li>Positions let consumers follow changes.</li>
+<li>Key ordering, statistics, and Bloom filters let lookups skip irrelevant data.</li>
+<li>Columnar chunks let analytical reads load only the columns they need.</li>
+<li>Text can be searched directly in batches or through postings in merged segments.</li>
+</ul>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1000 340" role="img" aria-label="A writer's rows become one batch file in one write and one flush. The file holds a position column, rows sorted by key, row groups of about 4 MB, and statistics and a filter per column chunk. Three readers use it: a consumer reading by position, a lookup that skips files and groups by their statistics, and a search that reads the batch whole. Later a merge folds batch files into a sorted segment of the same format and builds postings, which search then reads.">
+<defs>
+  <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m1l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="box" x="20" y="112" width="180" height="56" rx="3"/>
+<text class="t" x="110" y="134" text-anchor="middle">A writer's rows</text>
+<text class="t2" x="110" y="151" text-anchor="middle">a batch, or one flush's puts</text>
+<line class="edge log" x1="200" y1="140" x2="258" y2="140" marker-end="url(#m1l)"/>
+<text class="lab" x="229" y="131" text-anchor="middle">one write</text>
+<text class="lab" x="229" y="157" text-anchor="middle">one flush</text>
+<rect class="logbox" x="260" y="60" width="250" height="160" rx="3"/>
+<text class="logt" x="385" y="86" text-anchor="middle">Batch file N</text>
+<text class="t2" x="385" y="108" text-anchor="middle">a position column: 1041 … 1163</text>
+<text class="t2" x="385" y="126" text-anchor="middle">rows sorted by the log's keys</text>
+<text class="t2" x="385" y="144" text-anchor="middle">row groups of about 4 MB</text>
+<text class="t2" x="385" y="162" text-anchor="middle">min, max, counts and a filter per chunk</text>
+<text class="t2" x="385" y="180" text-anchor="middle">Magpie's own format</text>
+<text class="t2" x="385" y="198" text-anchor="middle">written once, never changed</text>
+<rect class="accbox" x="640" y="40" width="340" height="44" rx="3"/>
+<text class="t" x="652" y="59">Consumer at a position</text>
+<text class="t2" x="652" y="75">reads files from N on, in order: streams, change feeds</text>
+<rect class="accbox" x="640" y="118" width="340" height="44" rx="3"/>
+<text class="t" x="652" y="137">Lookup by key, scan with statistics</text>
+<text class="t2" x="652" y="153">skips files and groups that cannot hold the key</text>
+<rect class="accbox" x="640" y="196" width="340" height="44" rx="3"/>
+<text class="t" x="652" y="215">Search</text>
+<text class="t2" x="652" y="231">a batch read whole; a segment through its postings</text>
+<line class="edge read" x1="510" y1="100" x2="638" y2="62" marker-end="url(#m1a)"/>
+<line class="edge read" x1="510" y1="140" x2="638" y2="140" marker-end="url(#m1a)"/>
+<line class="edge read" x1="510" y1="180" x2="638" y2="218" marker-end="url(#m1a)"/>
+<rect class="box" x="260" y="262" width="250" height="56" rx="3"/>
+<text class="t" x="385" y="282" text-anchor="middle">Merge</text>
+<text class="t2" x="385" y="298" text-anchor="middle">many files → one sorted segment, same format,</text>
+<text class="t2" x="385" y="312" text-anchor="middle">postings built as each group is written</text>
+<line class="edge" x1="385" y1="220" x2="385" y2="260" marker-end="url(#m1)"/>
+<text class="lab" x="393" y="246">when the program asks</text>
+<line class="edge read" x1="510" y1="290" x2="638" y2="232" marker-end="url(#m1a)"/>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>One file serves every kind of reader. Each column chunk records its minimum, maximum, missing and distinct counts, and most also carry a Bloom filter (about 2% false positives), so a lookup opens only the files and row groups that can hold its key.</figcaption>
+</figure>
+<div class="prose">
+<p>A row is written when it reaches a batch file and rewritten when a merge incorporates it into a segment. There is no separate durable write-ahead log or external search store.</p>
+</div>
+</section>
+
+<section id="format">
+<h3>Magpie's own file format</h3>
+<div class="prose">
+<p>Magpie stores everything in one file format of its own, written for this engine: batch files, merged segments and the manifest are all files of this format. A file is written once and never changed. It holds a frame's columns in row groups, followed by an index that lets a reader find one column of one row group without reading the rest.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1000 300" role="img" aria-label="A Magpie file from left to right: the magic bytes, row group 1 holding a chunk and a filter for each column, more row groups, the column blocks with one entry per group for each column, the footer, and the footer's length with the magic again. Four numbered steps show how a reader reads it: the end of the file first, then the footer, then the block of the column it filters on, then only the chunks it needs.">
+<defs>
+  <marker id="m4a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="box" x="20" y="40" width="54" height="70" rx="2"/>
+<text class="t2" x="47" y="80" text-anchor="middle">magic</text>
+<rect class="soft" x="78" y="40" width="388" height="70" rx="2"/>
+<text class="bandlabel" x="88" y="56">Row group 1 · about 4 MB</text>
+<rect class="chunk" x="88" y="64" width="78" height="36" rx="2"/><text class="t2" x="127" y="86" text-anchor="middle">chunk a</text>
+<rect class="filt" x="168" y="64" width="22" height="36" rx="2"/>
+<rect class="chunk" x="196" y="64" width="98" height="36" rx="2"/><text class="t2" x="245" y="86" text-anchor="middle">chunk b</text>
+<rect class="filt" x="296" y="64" width="22" height="36" rx="2"/>
+<rect class="chunk" x="324" y="64" width="110" height="36" rx="2"/><text class="t2" x="379" y="86" text-anchor="middle">chunk c</text>
+<rect class="filt" x="436" y="64" width="22" height="36" rx="2"/>
+<rect class="soft" x="470" y="40" width="120" height="70" rx="2"/>
+<text class="bandlabel" x="480" y="56">Row groups 2 …</text>
+<text class="t2" x="530" y="88" text-anchor="middle">the same shape</text>
+<rect class="box" x="594" y="40" width="200" height="70" rx="2"/>
+<text class="bandlabel" x="604" y="56">Column blocks</text>
+<rect class="soft" x="604" y="64" width="56" height="36" rx="2"/><text class="t2" x="632" y="86" text-anchor="middle">a</text>
+<rect class="soft" x="664" y="64" width="56" height="36" rx="2"/><text class="t2" x="692" y="86" text-anchor="middle">b</text>
+<rect class="soft" x="724" y="64" width="56" height="36" rx="2"/><text class="t2" x="752" y="86" text-anchor="middle">c</text>
+<rect class="box" x="798" y="40" width="120" height="70" rx="2"/>
+<text class="bandlabel" x="808" y="56">Footer</text>
+<text class="t2" x="808" y="78">rows, positions,</text>
+<text class="t2" x="808" y="94">keys, columns</text>
+<rect class="box" x="922" y="40" width="58" height="70" rx="2"/>
+<text class="t2" x="951" y="72" text-anchor="middle">length</text>
+<text class="t2" x="951" y="88" text-anchor="middle">magic</text>
+<text class="lab" x="179" y="128" text-anchor="middle">filter</text>
+<line class="edge" x1="179" y1="102" x2="179" y2="118"/>
+<circle class="dot" cx="951" cy="150" r="11"/><text class="num" x="951" y="154" text-anchor="middle">1</text>
+<line class="edge read" x1="951" y1="139" x2="951" y2="114" marker-end="url(#m4a)"/>
+<circle class="dot" cx="858" cy="150" r="11"/><text class="num" x="858" y="154" text-anchor="middle">2</text>
+<line class="edge read" x1="858" y1="139" x2="858" y2="114" marker-end="url(#m4a)"/>
+<circle class="dot" cx="692" cy="150" r="11"/><text class="num" x="692" y="154" text-anchor="middle">3</text>
+<line class="edge read" x1="692" y1="139" x2="692" y2="104" marker-end="url(#m4a)"/>
+<circle class="dot" cx="245" cy="150" r="11"/><text class="num" x="245" y="154" text-anchor="middle">4</text>
+<line class="edge read" x1="245" y1="139" x2="245" y2="104" marker-end="url(#m4a)"/>
+<text class="t" x="40" y="200"><tspan class="tt">1</tspan>  Read the last bytes: the footer's length, and the magic that says this is a Magpie file.</text>
+<text class="t" x="40" y="224"><tspan class="tt">2</tspan>  Read the footer: the row count, the first and last positions, the keys and the columns.</text>
+<text class="t" x="40" y="248"><tspan class="tt">3</tspan>  Read one column's block: per group, where its chunk lies, min, max, missing and distinct counts. Skip groups that cannot match.</text>
+<text class="t" x="40" y="272"><tspan class="tt">4</tspan>  Read only the chunks of the columns asked, in the groups that are left, and decode them across the cores.</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>How a reader opens a file: the end first, then only what it needs. Asking for two columns of a hundred reads two columns' blocks and chunks.</figcaption>
+</figure>
+<div class="prose">
+<h4>How a column is stored</h4>
+<p>A row group holds about 4 MB of rows, and at least 1,024. Within it, each column is one chunk, encoded by its type:</p>
+</div>
+<div class="tablewrap">
+<table class="prose-table">
+<thead><tr><th>Column</th><th>Encoded as</th></tr></thead>
+<tbody>
+<tr><td>Integers</td><td>Offsets from the minimum, or deltas from the previous value, whichever is smaller, bit-packed. A column of positions or timestamps takes a few bits a row.</td></tr>
+<tr><td>Floats</td><td>Their 64 bits, or 32 for a column the log declared <code>narrow</code></td></tr>
+<tr><td>Text</td><td>Lengths and bytes, or a dictionary and codes when at most half the values are distinct</td></tr>
+<tr><td>Booleans</td><td>A bitmap</td></tr>
+<tr><td>Moments</td><td>Milliseconds and a UTC offset</td></tr>
+<tr><td>Vectors</td><td>The rows' numbers laid end to end, 64 or 32 bits each</td></tr>
+<tr><td>Missing cells</td><td>A presence bitmap beside any of the above</td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p>Each chunk then goes through an LZ77 compressor written for Magpie, which is kept only where it saves at least about a tenth of the bytes.</p>
+<h4>What lets a reader skip data</h4>
+<ul class="plain">
+<li><b>Statistics.</b> For each column of each row group, the column's block records the minimum, the maximum, and the missing and distinct counts. A reader skips any row group whose range cannot hold what it is looking for.</li>
+<li><b>Bloom filters.</b> After each chunk comes a filter over the group's distinct values: 8 bits and 6 hashes per value, about 2% false positives. It is left out past 65,536 distinct values, and for the position column, whose minimum and maximum already prune a range.</li>
+<li><b>Full-text postings.</b> Merged segments add, for each text column, a filter over its words and the postings described under full-text search.</li>
+</ul>
+<h4>Why not Parquet or Arrow</h4>
+<p>Parquet keeps one footer that describes every column chunk of every row group, and a reader parses it whole before reading any column; on a wide, long table that footer grows large. Magpie's footer holds one small entry per column, pointing at that column's block of per-group entries, so a reader of two columns out of a thousand reads the footer and two columns' blocks. Magpie's chunks also match how a Crow frame holds its columns, so writing and reading need no conversion through another in-memory format. Programs that need Arrow, Parquet, CSV or JSON load and save them through Crow's table library.</p>
+<p>The manifest uses the same format: a one-group file that lists the live segments and what the log declared, replaced atomically when a merge finishes.</p>
+</div>
+</section>
+
+<section id="durability">
+<h3>Visibility, durability, and snapshots</h3>
+<div class="prose">
+<p>Magpie distinguishes a write becoming visible from a write becoming durable.</p>
+</div>
+<div class="tablewrap">
+<table class="prose-table">
+<thead><tr><th>Write operation</th><th>Visible in the writing process</th><th>Durable</th></tr></thead>
+<tbody>
+<tr><td><code>put</code></td><td>Immediately</td><td>After a flush</td></tr>
+<tr><td><code>batch</code></td><td>During the call</td><td>Before the call returns successfully</td></tr>
+<tr><td><code>commit</code></td><td>If accepted</td><td>Before the call returns successfully</td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p>A compiled program flushes puts on a background thread. Writes arriving during a flush join the next batch. Under the interpreter, the flush runs synchronously.</p>
+<p>A process crash can lose pending puts. Programs that require durability before proceeding use <code>batch</code>, <code>commit</code>, or an explicit <code>sync</code>.</p>
+<p>A flush writes the batch under a temporary name, syncs it to the disk (<code>F_FULLFSYNC</code> on macOS, which also empties the drive's cache), links it to its final name, and syncs the directory. The link fails if the name is taken, so two writers can never claim one batch number. Recovery replays nothing: a temporary file is never listed, and a file cut short is refused with a reason.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1000 400" role="img" aria-label="Three writers on the left. A put and a commit go through the sequencer, which gives positions, keeps each key's last position and newest row, checks commits in memory, and flushes pending rows as one batch file. A batch is a put and a flush through the sequencer. The log's files feed segments through the merge and consumers through tail. A reader on the right reads at snapshot S, position 1305: pending rows, batch files and segments at or before it.">
+<defs>
+  <marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m3l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="box" x="20" y="40" width="150" height="46" rx="3"/>
+<text class="t" x="95" y="59" text-anchor="middle">Put</text>
+<text class="t2" x="95" y="76" text-anchor="middle">a row, an event, a counter</text>
+<rect class="box" x="20" y="130" width="150" height="46" rx="3"/>
+<text class="t" x="95" y="149" text-anchor="middle">Commit</text>
+<text class="t2" x="95" y="166" text-anchor="middle">rows, with the keys read</text>
+<rect class="box" x="20" y="290" width="150" height="46" rx="3"/>
+<text class="t" x="95" y="309" text-anchor="middle">Batch</text>
+<text class="t2" x="95" y="326" text-anchor="middle">a bulk load, a backfill</text>
+<rect class="logbox" x="220" y="36" width="200" height="144" rx="3"/>
+<text class="logt" x="320" y="60" text-anchor="middle">Sequencer</text>
+<text class="t2" x="320" y="81" text-anchor="middle">positions given as rows arrive</text>
+<text class="t2" x="320" y="97" text-anchor="middle">each key's last position</text>
+<text class="t2" x="320" y="113" text-anchor="middle">each key's newest row</text>
+<text class="t2" x="320" y="137" text-anchor="middle">a commit checked here, in memory</text>
+<text class="t2" x="320" y="153" text-anchor="middle">pending rows flushed as one file</text>
+<line class="edge log" x1="170" y1="63" x2="218" y2="63" marker-end="url(#m3l)"/>
+<line class="edge log" x1="170" y1="153" x2="218" y2="153" marker-end="url(#m3l)"/>
+<rect class="logbox" x="470" y="30" width="160" height="200" rx="3"/>
+<text class="logt" x="550" y="56" text-anchor="middle">The log</text>
+<text class="t2" x="550" y="78" text-anchor="middle">batch 17 · 1041 – 1163</text>
+<text class="t2" x="550" y="94" text-anchor="middle">batch 18 · 1164 – 1290</text>
+<text class="t2" x="550" y="110" text-anchor="middle">batch 19 · 1291 – 1300</text>
+<text class="t2" x="550" y="126" text-anchor="middle">pending · 1301 – 1309</text>
+<text class="t2" x="550" y="142" text-anchor="middle">manifest</text>
+<text class="t2" x="550" y="174" text-anchor="middle">each batch sorted by key,</text>
+<text class="t2" x="550" y="189" text-anchor="middle">with its statistics;</text>
+<text class="t2" x="550" y="204" text-anchor="middle">one order for every write</text>
+<line class="edge log" x1="420" y1="108" x2="468" y2="108" marker-end="url(#m3l)"/>
+<text class="lab" x="444" y="100" text-anchor="middle">flush</text>
+<polyline class="edge log" points="170,313 320,313 320,182" marker-end="url(#m3l)"/>
+<text class="lab" x="180" y="331">a put and a flush, synced before it returns</text>
+<rect class="box" x="680" y="96" width="140" height="34" rx="3"/>
+<text class="t" x="750" y="118" text-anchor="middle">Segments</text>
+<rect class="box" x="680" y="150" width="140" height="34" rx="3"/>
+<text class="t" x="750" y="172" text-anchor="middle">Consumers</text>
+<line class="edge log" x1="630" y1="113" x2="678" y2="113" marker-end="url(#m3l)"/>
+<line class="edge log" x1="630" y1="167" x2="678" y2="167" marker-end="url(#m3l)"/>
+<text class="lab" x="654" y="106" text-anchor="middle">merge</text>
+<text class="lab" x="654" y="160" text-anchor="middle">tail</text>
+<rect class="accbox" x="850" y="110" width="130" height="60" rx="3"/>
+<text class="t" x="915" y="133" text-anchor="middle">Reader</text>
+<text class="t2" x="915" y="150" text-anchor="middle">snapshot S</text>
+<text class="t2" x="915" y="163" text-anchor="middle">S = position 1305</text>
+<line class="edge read" x1="820" y1="135" x2="848" y2="135" marker-end="url(#m3a)"/>
+<polyline class="edge read" points="630,252 915,252 915,172" marker-end="url(#m3a)"/>
+<text class="lab" x="770" y="268" text-anchor="middle">pending rows, batches and segments at or before S</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>Every write takes its place in one order. A put is visible at once and durable at the next flush; a commit is checked in memory, then written and synced; a batch is a put and a flush, on disk before it returns. A reader bounded at position S sees exactly the writes at or before S.</figcaption>
+</figure>
+<div class="prose">
+<p>Positions also define read boundaries. Reads using the same snapshot position share the same boundary on visible writes within a log. A table read, a change read, and an aggregate can therefore be evaluated against the same position, through their <code>upto</code> bound. <code>search</code>, <code>nearest</code>, and <code>lookup</code> read the log as it stands when they run.</p>
+<p>Historical reads additionally depend on retention. Once compaction removes an older version, its position cannot restore it. Logs that need complete replay or historical reconstruction must retain every row.</p>
+<p>A second machine can follow a log: it fetches the immutable files it lacks and reads them with the same operations. Shipping is asynchronous, so a write lives on the leader's disk alone until the follower's next fetch. Promotion is manual; automatic election and fencing are not implemented.</p>
+</div>
+</section>
+
+<section id="merge">
+<h3>What a merge changes</h3>
+<div class="prose">
+<p>A merge is an explicit operation controlled by the program.</p>
+<p>It streams sorted inputs into new segments, builds full-text postings, and publishes the new file set through an atomically replaced manifest.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1000 300" role="img" aria-label="Three batch files, each sorted by key, flow into a streaming merge that holds one row group from each input and keeps either the newest version of each key or every row. It writes a level-1 segment of at most 1 GB with full-text postings, and then the manifest is replaced atomically, after which the inputs are removed. Below, eight level-1 segments fold into one level-2 segment when a level holds more than eight.">
+<defs>
+  <marker id="m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m5l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="logbox" x="20" y="30" width="190" height="48" rx="3"/>
+<text class="t" x="115" y="51" text-anchor="middle">Batch file 17</text>
+<text class="t2" x="115" y="68" text-anchor="middle">sorted by key</text>
+<rect class="logbox" x="20" y="92" width="190" height="48" rx="3"/>
+<text class="t" x="115" y="113" text-anchor="middle">Batch file 18</text>
+<text class="t2" x="115" y="130" text-anchor="middle">sorted by key</text>
+<rect class="logbox" x="20" y="154" width="190" height="48" rx="3"/>
+<text class="t" x="115" y="175" text-anchor="middle">Batch file 19</text>
+<text class="t2" x="115" y="192" text-anchor="middle">sorted by key</text>
+<line class="edge log" x1="210" y1="54" x2="268" y2="92" marker-end="url(#m5l)"/>
+<line class="edge log" x1="210" y1="116" x2="268" y2="116" marker-end="url(#m5l)"/>
+<line class="edge log" x1="210" y1="178" x2="268" y2="140" marker-end="url(#m5l)"/>
+<rect class="box" x="270" y="56" width="250" height="120" rx="3"/>
+<text class="tt" x="395" y="80" text-anchor="middle">Streaming merge</text>
+<text class="t2" x="395" y="102" text-anchor="middle">one row group from each input in memory</text>
+<text class="t2" x="395" y="120" text-anchor="middle">rows in key order, then position</text>
+<text class="t2" x="395" y="142" text-anchor="middle">keeps the newest version of each key,</text>
+<text class="t2" x="395" y="160" text-anchor="middle">or every row</text>
+<line class="edge log" x1="520" y1="116" x2="578" y2="116" marker-end="url(#m5l)"/>
+<rect class="box" x="580" y="70" width="210" height="92" rx="3"/>
+<text class="tt" x="685" y="94" text-anchor="middle">Segment, level 1</text>
+<text class="t2" x="685" y="114" text-anchor="middle">same format, at most 1 GB</text>
+<text class="t2" x="685" y="132" text-anchor="middle">full-text postings per row group</text>
+<text class="t2" x="685" y="150" text-anchor="middle">statistics and filters per chunk</text>
+<line class="edge" x1="790" y1="116" x2="838" y2="116" marker-end="url(#m5)"/>
+<rect class="box" x="840" y="78" width="140" height="76" rx="3"/>
+<text class="tt" x="910" y="100" text-anchor="middle">Manifest</text>
+<text class="t2" x="910" y="120" text-anchor="middle">replaced atomically;</text>
+<text class="t2" x="910" y="138" text-anchor="middle">then inputs removed</text>
+<rect class="dashed" x="20" y="222" width="960" height="66" rx="3"/>
+<text class="bandlabel" x="34" y="250">Levels</text>
+<rect class="chunk" x="110" y="234" width="24" height="26" rx="2"/>
+<rect class="chunk" x="140" y="234" width="24" height="26" rx="2"/>
+<rect class="chunk" x="170" y="234" width="24" height="26" rx="2"/>
+<rect class="chunk" x="200" y="234" width="24" height="26" rx="2"/>
+<rect class="chunk" x="230" y="234" width="24" height="26" rx="2"/>
+<rect class="chunk" x="260" y="234" width="24" height="26" rx="2"/>
+<rect class="chunk" x="290" y="234" width="24" height="26" rx="2"/>
+<rect class="chunk" x="320" y="234" width="24" height="26" rx="2"/>
+<line class="edge" x1="352" y1="247" x2="384" y2="247" marker-end="url(#m5)"/>
+<rect class="chunk" x="388" y="232" width="64" height="30" rx="2"/>
+<text class="lab" x="227" y="278" text-anchor="middle">eight level-1 segments</text>
+<text class="lab" x="420" y="278" text-anchor="middle">one level-2</text>
+<text class="t2" x="490" y="245">When a level holds more than eight segments, its oldest eight</text>
+<text class="t2" x="490" y="263">fold into one segment of the next level, so each merge</text>
+<text class="t2" x="490" y="281">rewrites only a slice of the log.</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>The merge holds one row group per input, so its memory stays small whatever the log's size. Readers see either the old file set or the new one, never a mix, because the manifest switches in one step.</figcaption>
+</figure>
+<div class="prose">
+<p>The retention mode determines what survives:</p>
+</div>
+<div class="tablewrap">
+<table class="prose-table">
+<thead><tr><th>Retention mode</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>Keep the newest version per key</td><td>Current state survives; superseded history can disappear.</td></tr>
+<tr><td>Keep every row (<code>every = true</code>)</td><td>Historical versions and replay remain available.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p>After compaction, a change consumer sees surviving rows at their original positions, with gaps where older versions were removed.</p>
+<p>This makes retention part of the application's data model. A current-state log and a historical event log can use the same engine while choosing different merge behavior.</p>
+</div>
+</section>
+
+<section id="transactions">
+<h3>Transactions over keys</h3>
+<div class="prose">
+<p>Magpie supports optimistic transactions within one log.</p>
+<p>A transaction reads at a snapshot, records the keys it read—including keys it checked but did not find—and submits its writes. The sequencer refuses the commit if a recorded key changed after that snapshot. A refused commit writes nothing, and its error names the key and where it changed. An accepted commit lands as one batch and is on disk before the call returns.</p>
+<pre><code>stale = magpie.commit['stock', frame.new[id = [2], qty = [26]],
+    seen = 1, columns = ['id'], equal = ['2']]
+log[stale.reason]
+--- conflict: id = 2 was written at position 2, after snapshot 1</code></pre>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 344" role="img" aria-label="A timeline. The log holds id 1 and id 2 with quantity 20 at positions 0 and 1. Transaction A reads id 2 at snapshot 1 and sees quantity 20. Writer B then puts id 2 with quantity 25, which lands at position 2. A commits with snapshot 1, naming key id 2; the sequencer refuses it because id 2 was written at position 2, after snapshot 1, and nothing is written. A retries: it reads at snapshot 2, sees quantity 25, and commits with snapshot 2, which is accepted and lands at position 3, synced before the call returns.">
+<defs>
+  <marker id="m8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m8l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m8a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="bandlabel" x="20" y="69">The log</text>
+<text class="bandlabel" x="20" y="139">Writer B</text>
+<text class="bandlabel" x="20" y="231">Transaction A</text>
+
+<line class="dashed" x1="280" y1="65" x2="390" y2="65"/>
+<line class="dashed" x1="520" y1="65" x2="860" y2="65"/>
+<rect class="logbox" x="120" y="44" width="160" height="42" rx="3"/>
+<text class="tt" x="200" y="61" text-anchor="middle">positions 0–1</text><text class="t2" x="200" y="77" text-anchor="middle">id 1 qty 10 · id 2 qty 20</text>
+<rect class="logbox" x="390" y="44" width="130" height="42" rx="3"/>
+<text class="tt" x="455" y="61" text-anchor="middle">position 2</text><text class="t2" x="455" y="77" text-anchor="middle">id 2, qty 25</text>
+<rect class="logbox" x="860" y="44" width="150" height="42" rx="3"/>
+<text class="tt" x="935" y="61" text-anchor="middle">position 3</text><text class="t2" x="935" y="77" text-anchor="middle">id 2, qty 26</text>
+
+<rect class="box" x="390" y="114" width="130" height="42" rx="3"/>
+<text class="tt" x="455" y="131" text-anchor="middle">put id 2</text><text class="t2" x="455" y="147" text-anchor="middle">qty 25</text>
+<line class="edge log" x1="455" y1="114" x2="455" y2="89" marker-end="url(#m8l)"/>
+
+<line class="edge read" x1="230" y1="86" x2="262" y2="201" marker-end="url(#m8a)"/>
+<rect class="box" x="200" y="204" width="150" height="46" rx="3"/>
+<text class="tt" x="275" y="222" text-anchor="middle">read at snapshot 1</text><text class="t2" x="275" y="239" text-anchor="middle">id 2 → qty 20</text>
+
+<rect class="box" x="540" y="204" width="150" height="46" rx="3"/>
+<text class="tt" x="615" y="222" text-anchor="middle">commit, seen = 1</text><text class="t2" x="615" y="239" text-anchor="middle">keys read: id = 2</text>
+<line class="edge" x1="615" y1="250" x2="615" y2="266" marker-end="url(#m8)"/>
+<rect class="badbox" x="500" y="268" width="230" height="46" rx="3"/>
+<text class="badt" x="615" y="286" text-anchor="middle">refused · nothing written</text><text class="t2" x="615" y="303" text-anchor="middle">id 2 was written at 2, after snapshot 1</text>
+<path class="edge" d="M730,291 C770,291 792,276 795,254" marker-end="url(#m8)"/>
+<text class="lab" x="742" y="311">retry</text>
+
+<line class="edge read" x1="500" y1="86" x2="782" y2="201" marker-end="url(#m8a)"/>
+<rect class="box" x="720" y="204" width="150" height="46" rx="3"/>
+<text class="tt" x="795" y="222" text-anchor="middle">read at snapshot 2</text><text class="t2" x="795" y="239" text-anchor="middle">id 2 → qty 25</text>
+
+<rect class="box" x="880" y="204" width="140" height="46" rx="3"/>
+<text class="tt" x="950" y="222" text-anchor="middle">commit, seen = 2</text><text class="t2" x="950" y="239" text-anchor="middle">keys read: id = 2</text>
+<line class="edge log" x1="950" y1="204" x2="936" y2="89" marker-end="url(#m8l)"/>
+<text class="lab" x="932" y="150" text-anchor="end">accepted: position 3</text>
+<text class="lab" x="932" y="165" text-anchor="end">synced before it returns</text>
+
+<line class="edge" x1="120" y1="334" x2="1010" y2="334" marker-end="url(#m8)"/>
+<text class="lab" x="1006" y="326" text-anchor="end">time</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>The positions and the refusal are from a real run, the same in both of Crow's modes. Transaction A reads id 2 at snapshot 1. Writer B then writes id 2 at position 2. A's commit names id 2 and snapshot 1, so the sequencer refuses it and nothing is written. A reads again at snapshot 2 and commits; its row lands at position 3, on disk before the call returns.</figcaption>
+</figure>
+<div class="prose">
+<p>This supports transactions whose dependencies can be expressed as explicit keys. For example, an application can read an inventory record and submit an updated quantity, with a conflict if another write changed that record first, as in the figure. When the keys read are the log's own keys, the check runs against the sequencer's in-memory index of each key's last position.</p>
+<p>For transactions that name every key they read, the result is serializable: no interleaving of two such transactions can slip past the check. After a refusal, the application reads again at a newer snapshot and retries. A retry is also safe after a crash: if a commit succeeded but its acknowledgement was lost, the same commit sent again is refused, because its own first write now comes after its snapshot. A transaction is never applied twice.</p>
+<p>The check does not cover arbitrary predicates. A question such as "does any booking overlap this interval?" needs a key-based representation of the conflicting slots, such as one key per time slot the booking covers, if the application wants those conflicts detected.</p>
+<p>A transaction covers one log, and each log has one writing process.</p>
+</div>
+</section>
+
+<div class="part" id="part3">
+<div class="part-num">Part 3</div>
+<h2>Querying the log</h2>
+<p>Every way of reading the log, from a key's current value to search, vectors and analytics.</p>
+</div>
+
+<section id="inside">
+<h3>Current state and change streams</h3>
+<div class="prose">
+<p>This section covers the basic reads, current state and change streams; the next three cover full-text search, vector search, and analytics with point-in-time joins. Every read returns a Crow frame, the language's in-memory table, and takes only what it needs from a file: the footer first, then the column blocks and chunks it asks for, as the file-format section describes.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 300" role="img" aria-label="A log of four rows: position 0 holds id 1 with quantity 3, position 1 id 2 with 12, position 2 id 3 with 7, position 3 id 2 with 20, and position 4 is not written yet. latest picks positions 0, 2 and 3, the newest row of each key, answering 3, 7 and 20. lookup of id 2 picks positions 1 and 3, every version of that key, answering 12 and 20. since 2 picks positions 2 and 3, every row from position 2, answering 7 and 20. tail after 3 waits at position 4 for rows that have not arrived.">
+<text class="bandlabel" x="20" y="70">The log</text>
+<line class="guide" x1="230" y1="88" x2="230" y2="290"/><line class="guide" x1="360" y1="88" x2="360" y2="290"/><line class="guide" x1="490" y1="88" x2="490" y2="290"/><line class="guide" x1="620" y1="88" x2="620" y2="290"/><line class="guide" x1="750" y1="88" x2="750" y2="290"/>
+<rect class="logbox" x="170" y="44" width="120" height="44" rx="3"/><text class="tt" x="230" y="64" text-anchor="middle">id 1, qty 3</text><text class="lab" x="230" y="80" text-anchor="middle">position 0</text>
+<rect class="logbox" x="300" y="44" width="120" height="44" rx="3"/><text class="tt" x="360" y="64" text-anchor="middle">id 2, qty 12</text><text class="lab" x="360" y="80" text-anchor="middle">position 1</text>
+<rect class="logbox" x="430" y="44" width="120" height="44" rx="3"/><text class="tt" x="490" y="64" text-anchor="middle">id 3, qty 7</text><text class="lab" x="490" y="80" text-anchor="middle">position 2</text>
+<rect class="logbox" x="560" y="44" width="120" height="44" rx="3"/><text class="tt" x="620" y="64" text-anchor="middle">id 2, qty 20</text><text class="lab" x="620" y="80" text-anchor="middle">position 3</text>
+<rect class="dashed" x="690" y="44" width="120" height="44" rx="3"/><text class="t2" x="750" y="64" text-anchor="middle">not written yet</text><text class="lab" x="750" y="80" text-anchor="middle">position 4</text>
+
+<text class="tt" x="20" y="128">latest</text><text class="t2" x="20" y="143">the newest row of each key</text>
+<rect class="accbox" x="190" y="112" width="80" height="34" rx="3"/><text class="t" x="230" y="134" text-anchor="middle">3</text>
+<rect class="accbox" x="450" y="112" width="80" height="34" rx="3"/><text class="t" x="490" y="134" text-anchor="middle">7</text>
+<rect class="accbox" x="580" y="112" width="80" height="34" rx="3"/><text class="t" x="620" y="134" text-anchor="middle">20</text>
+<text class="t" x="850" y="134">[3, 7, 20]</text>
+
+<text class="tt" x="20" y="174">lookup id = 2</text><text class="t2" x="20" y="189">every version of the key</text>
+<rect class="accbox" x="320" y="158" width="80" height="34" rx="3"/><text class="t" x="360" y="180" text-anchor="middle">12</text>
+<rect class="accbox" x="580" y="158" width="80" height="34" rx="3"/><text class="t" x="620" y="180" text-anchor="middle">20</text>
+<text class="t" x="850" y="180">[12, 20]</text>
+
+<text class="tt" x="20" y="220">since 2</text><text class="t2" x="20" y="235">every row from position 2</text>
+<rect class="accbox" x="450" y="204" width="80" height="34" rx="3"/><text class="t" x="490" y="226" text-anchor="middle">7</text>
+<rect class="accbox" x="580" y="204" width="80" height="34" rx="3"/><text class="t" x="620" y="226" text-anchor="middle">20</text>
+<text class="t" x="850" y="226">[7, 20]</text>
+
+<text class="tt" x="20" y="266">tail after 3</text><text class="t2" x="20" y="281">waits for new rows</text>
+<rect class="dashed" x="710" y="250" width="80" height="34" rx="3"/><text class="t2" x="750" y="272" text-anchor="middle">waits</text>
+<text class="t" x="850" y="272">the next rows</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>Four reads of the same log, which the example below runs. Each selects different rows: the newest version of each key, every version of one key, everything from a position, or whatever arrives next.</figcaption>
+</figure>
+<div class="codepair">
+<div>
+<div class="label">reads.co</div>
+<pre><code>use magpie, frame
+
+a = magpie.batch['orders', frame.new[id = [1, 2, 3], qty = [3, 12, 7]], by = ['id']]
+b = magpie.put['orders', frame.new[id = [2], qty = [20]]]
+log[magpie.latest['orders'].qty]
+log[magpie.lookup['orders', ['id'], ['2']].qty]
+log[magpie.since['orders', 2].qty]
+log[len[magpie.tail['orders', 3, 0.1]]]</code></pre>
+</div>
+<div>
+<div class="label">Output</div>
+<pre><code>[3, 7, 20]
+[12, 20]
+[7, 20]
+0</code></pre>
+</div>
+</div>
+<div class="prose">
+<p class="note">The last line waits a tenth of a second for rows past position 3; none arrive, so it answers an empty frame.</p>
+<h4>Current state: latest and lookup</h4>
+<p><code>latest</code> answers the table a log holds: the newest version of each key. It can be bounded to a range of the first key, so a segment sorted that way reads only the row groups the range covers, or to a snapshot position with <code>upto</code>. Given one key, it answers from the sequencer's memory in microseconds. <code>lookup</code> answers every version of a key that the log still holds. It opens only the files whose filters admit the key, and in a segment only the row groups whose statistics do, so a lookup by a segment's sort keys reads only the row groups that hold them.</p>
+<h4>Change streams: since and tail</h4>
+<p><code>since</code> answers every row from a position onward, in position order: a consumer reads from the position after the last one it saw. Reads are bounded windows, so a consumer walks a large log a window at a time. <code>tail</code> answers the rows after a position, waiting up to a given number of seconds for new ones to arrive (it checks every 20 ms), so a view that follows the log is a loop over <code>tail</code>. Kafka consumers reach the same reads through the Kafka protocol, and after a merge a consumer sees the surviving rows at their original positions.</p>
+<p>Four reads would need too much data if they were computed after a read returned: full-text search, vector search, analytics and point-in-time joins. Magpie runs them inside the reader, one row group at a time, as the next three sections describe:</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 356" role="img" aria-label="Two lanes. The muted top lane shows what Magpie avoids: loading the whole log, every row and column, as one frame in memory, then computing a small answer. The main lane shows the work inside the reader: row groups from batch files and segments, two of them skipped because statistics or filters rule them out; each remaining group is worked by the operation: summary decodes the named columns, filters and groups them into partial counts, sums and means; search reads postings or scans a batch for the best-scoring rows and skips blocks that cannot reach the top k; nearest computes the cosine similarity of each vector and keeps the k best; prior reads each key's run for the newest row at or before each label's moment. The partials are combined into small answers: one row per group, the top k rows with scores, the k nearest rows with scores, one row per label.">
+<defs>
+  <marker id="m12" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m12m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m12a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+
+<text class="bandlabel" x="20" y="47">Load first</text>
+<text class="t2" x="20" y="63">what Magpie avoids</text>
+<rect class="dashed" x="150" y="28" width="130" height="40" rx="3"/>
+<text class="t2" x="215" y="52" text-anchor="middle">the whole log</text>
+<line class="edge muted" x1="280" y1="48" x2="318" y2="48" marker-end="url(#m12m)"/>
+<rect class="dashed" x="320" y="28" width="330" height="40" rx="3"/>
+<text class="t2" x="485" y="52" text-anchor="middle">every row and column, held as one frame in memory</text>
+<line class="edge muted" x1="650" y1="48" x2="688" y2="48" marker-end="url(#m12m)"/>
+<rect class="dashed" x="690" y="28" width="130" height="40" rx="3"/>
+<text class="t2" x="755" y="52" text-anchor="middle">then compute</text>
+<line class="edge muted" x1="820" y1="48" x2="858" y2="48" marker-end="url(#m12m)"/>
+<rect class="dashed" x="860" y="28" width="160" height="40" rx="3"/>
+<text class="t2" x="940" y="52" text-anchor="middle">a small answer</text>
+
+<line class="divider" x1="20" y1="92" x2="1020" y2="92"/>
+<text class="bandlabel" x="20" y="116">Inside the reader</text>
+
+<rect class="chunk" x="40" y="130" width="120" height="24" rx="2"/><text class="lab" x="100" y="146" text-anchor="middle">row group</text>
+<rect class="dashed" x="40" y="160" width="120" height="24" rx="2"/><text class="lab" x="100" y="176" text-anchor="middle">skipped</text>
+<rect class="chunk" x="40" y="190" width="120" height="24" rx="2"/><text class="lab" x="100" y="206" text-anchor="middle">row group</text>
+<rect class="chunk" x="40" y="220" width="120" height="24" rx="2"/><text class="lab" x="100" y="236" text-anchor="middle">row group</text>
+<rect class="dashed" x="40" y="250" width="120" height="24" rx="2"/><text class="lab" x="100" y="266" text-anchor="middle">skipped</text>
+<rect class="chunk" x="40" y="280" width="120" height="24" rx="2"/><text class="lab" x="100" y="296" text-anchor="middle">row group</text>
+<text class="t2" x="100" y="324" text-anchor="middle">batch files and segments</text>
+<text class="t2" x="100" y="339" text-anchor="middle">skipped where statistics</text>
+<text class="t2" x="100" y="352" text-anchor="middle">or filters rule them out</text>
+<line class="edge" x1="160" y1="226" x2="238" y2="226" marker-end="url(#m12)"/>
+<text class="lab" x="199" y="216" text-anchor="middle">one group</text>
+<text class="lab" x="199" y="244" text-anchor="middle">at a time</text>
+
+<rect class="accbox" x="240" y="124" width="510" height="44" rx="3"/>
+<text class="tt" x="252" y="150">summary</text>
+<text class="t2" x="352" y="142">decode the named columns, filter, group</text><text class="t2" x="352" y="157">→ partial counts, sums, means and variances</text>
+<rect class="accbox" x="240" y="176" width="510" height="44" rx="3"/>
+<text class="tt" x="252" y="202">search</text>
+<text class="t2" x="352" y="194">postings, or a scan of a batch → the best-scoring rows</text><text class="t2" x="352" y="209">blocks that cannot reach the top k are skipped</text>
+<rect class="accbox" x="240" y="228" width="510" height="44" rx="3"/>
+<text class="tt" x="252" y="254">nearest</text>
+<text class="t2" x="352" y="246">the cosine similarity of each vector</text><text class="t2" x="352" y="261">→ the k best rows so far</text>
+<rect class="accbox" x="240" y="280" width="510" height="44" rx="3"/>
+<text class="tt" x="252" y="306">prior</text>
+<text class="t2" x="352" y="298">each key's run of rows</text><text class="t2" x="352" y="313">→ the newest at or before each label's moment</text>
+
+<text class="bandlabel" x="820" y="116">Combined into</text>
+<line class="edge" x1="750" y1="146" x2="818" y2="146" marker-end="url(#m12)"/>
+<rect class="box" x="820" y="128" width="200" height="36" rx="3"/><text class="t" x="832" y="151">one row per group</text>
+<line class="edge" x1="750" y1="198" x2="818" y2="198" marker-end="url(#m12)"/>
+<rect class="box" x="820" y="180" width="200" height="36" rx="3"/><text class="t" x="832" y="203">the top k rows, with scores</text>
+<line class="edge" x1="750" y1="250" x2="818" y2="250" marker-end="url(#m12)"/>
+<rect class="box" x="820" y="232" width="200" height="36" rx="3"/><text class="t" x="832" y="255">the k nearest, with scores</text>
+<line class="edge" x1="750" y1="302" x2="818" y2="302" marker-end="url(#m12)"/>
+<rect class="box" x="820" y="284" width="200" height="36" rx="3"/><text class="t" x="832" y="307">one row per label</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>Instead of loading the whole log as a frame and then computing, each operation works inside the reader, one row group at a time. Groups that statistics or filters rule out are skipped, only the needed columns are decoded, and small partial results are combined into the answer.</figcaption>
+</figure>
+</section>
+
+<section id="search">
+<h3>Full-text search</h3>
+<div class="prose">
+<p><code>search</code> ranks rows by BM25, scored as Lucene's <code>BM25Similarity</code> scores it (k1 = 1.2, b = 0.75), over the whole log as one corpus. It returns the top k rows with a <code>score</code>, and optionally a snippet around the first match. Over five notes (1: "the kitchen table is set", 2: "a table in the garden", 3: "kitchens of the world", 4: "running the kitchen", 5: "tables and chairs"), each query form finds:</p>
+</div>
+<div class="tablewrap">
+<table class="prose-table">
+<thead><tr><th>Form</th><th>Query</th><th>Finds</th></tr></thead>
+<tbody>
+<tr><td>Phrase</td><td><code>'kitchen table'</code></td><td>Note 1</td></tr>
+<tr><td>Prefix</td><td><code>'kit*'</code></td><td>Notes 1, 3 and 4</td></tr>
+<tr><td>Fuzzy, within two edits</td><td><code>'kitchn~'</code></td><td>Notes 1, 3 and 4</td></tr>
+<tr><td>Stemmed, in a log declared with <code>stem = true</code></td><td><code>'tabling'</code></td><td>"the tables" and "a table"</td></tr>
+<tr><td>Snippet, 6 characters each side</td><td><code>'table'</code></td><td>"…tchen table is se…"</td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p>A batch file is searched by scanning its text. A merged segment carries an index for each text column of each row group: a filter over its words, a sorted dictionary of terms, and each term's postings (the rows that hold it, how often, and where), delta-encoded and bit-packed in blocks of 128.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 276" role="img" aria-label="How a search uses a merged segment's index, left to right. Query words, which may be terms, phrases, prefixes, fuzzy words, and stemmed where the log declared it, go to the word filter, which skips row groups holding none of the words. The sorted term dictionary finds each term: a prefix is a range of it, and a fuzzy word the terms within two edits. The postings list the rows, counts and positions in blocks of 128, each block carrying a bound on the score it can add. The top k by BM25 skips blocks that cannot beat the k-th score, and returns rows with scores and snippets. Batch files, and columns too unique or too repetitive to index, are scanned instead, with the same counts and so the same ranking.">
+<defs>
+  <marker id="m13" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="box" x="20" y="40" width="170" height="88" rx="3"/>
+<text class="tt" x="32" y="62">Query words</text><text class="t2" x="32" y="82">a term, a phrase</text><text class="t2" x="32" y="98">a prefix*, a fuzzy~ word</text><text class="t2" x="32" y="114">stemmed, if declared</text>
+<line class="edge" x1="190" y1="84" x2="218" y2="84" marker-end="url(#m13)"/>
+<rect class="accbox" x="220" y="40" width="170" height="88" rx="3"/>
+<text class="tt" x="232" y="62">Word filter</text><text class="t2" x="232" y="82">per row group:</text><text class="t2" x="232" y="98">skip groups holding</text><text class="t2" x="232" y="114">none of the words</text>
+<line class="edge" x1="390" y1="84" x2="418" y2="84" marker-end="url(#m13)"/>
+<rect class="accbox" x="420" y="40" width="170" height="88" rx="3"/>
+<text class="tt" x="432" y="62">Term dictionary</text><text class="t2" x="432" y="82">sorted terms:</text><text class="t2" x="432" y="98">a prefix is a range,</text><text class="t2" x="432" y="114">fuzzy is within 2 edits</text>
+<line class="edge" x1="590" y1="84" x2="618" y2="84" marker-end="url(#m13)"/>
+<rect class="accbox" x="620" y="40" width="180" height="88" rx="3"/>
+<text class="tt" x="632" y="62">Postings</text><text class="t2" x="632" y="82">rows, counts, positions</text><text class="t2" x="632" y="98">in blocks of 128,</text><text class="t2" x="632" y="114">each with a score bound</text>
+<line class="edge" x1="800" y1="84" x2="828" y2="84" marker-end="url(#m13)"/>
+<rect class="box" x="830" y="40" width="190" height="88" rx="3"/>
+<text class="tt" x="842" y="62">Top k by BM25</text><text class="t2" x="842" y="82">skip blocks that cannot</text><text class="t2" x="842" y="98">beat the k-th score</text><text class="t2" x="842" y="114">→ rows, scores, snippets</text>
+
+<line class="edge" x1="710" y1="128" x2="710" y2="148"/>
+<rect class="chunk" x="622" y="150" width="40" height="24" rx="2"/>
+<rect class="dashed" x="667" y="150" width="40" height="24" rx="2"/>
+<rect class="chunk" x="712" y="150" width="40" height="24" rx="2"/>
+<rect class="dashed" x="757" y="150" width="40" height="24" rx="2"/>
+<text class="lab" x="687" y="166" text-anchor="middle">skip</text>
+<text class="lab" x="777" y="166" text-anchor="middle">skip</text>
+<text class="lab" x="710" y="194" text-anchor="middle">each block: largest count, shortest document</text>
+
+<rect class="dashed" x="20" y="226" width="1000" height="36" rx="3"/>
+<text class="t2" x="520" y="248" text-anchor="middle">Batch files, and columns too unique or too repetitive to index, are scanned and tokenised instead: the counts are the same, so the ranking is the same.</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>How a search reads a merged segment's index. The word filter and the score bounds let it skip whole row groups and whole blocks of postings without changing the answer.</figcaption>
+</figure>
+<div class="prose">
+<p>Each block records its largest term count and its shortest document, which bound the best score it can add, so a top-k query skips blocks that cannot beat the current k-th score. Two kinds of column get no index: identifier-like columns, with more distinct words than half their documents, and category-like columns, such as a symbol or a day, with fewer than one distinct word per 64 documents. Their value filters already prune, and a search scans them. Scanned or indexed, the counts are the same, so the ranking is the same. Over 100,000 short texts, a common word's top 10 took 54 ms scanned and 17 ms through the index.</p>
+<p>Magpie keeps each document's length exactly, where Lucene stores one byte per length, so Elasticsearch's scores differ from Magpie's after the second digit. The scores are checked against the formula computed independently in Python, and every query form against a full scan.</p>
+</div>
+</section>
+
+<section id="vectors">
+<h3>Vector search</h3>
+<div class="prose">
+<p>A frame column can hold vectors of one width, such as embeddings, stored as 64-bit floats, or as 32-bit for a column the log declares <code>narrow</code>. <code>nearest</code> returns the k rows whose vectors have the highest cosine similarity to a query vector, computed exactly over every row, pending rows included. It agrees row for row and score for score with the flat index of Crow's vectors package. Among 100,000 vectors of width 64, the nearest 10 took 22 ms from the files, against 12 ms for that flat index over the same vectors held in memory. An approximate index such as HNSW is planned for collections where an exact scan is too slow.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 300" role="img" aria-label="Left, drawn to scale: three vectors, id 1 at [1, 0], id 2 at [0, 1] and id 3 at [1, 1], and the query [1, 0.1]. Their cosine similarities to the query are 0.995 for id 1, 0.774 for id 3 and 0.10 for id 2, so the two nearest are ids 1 and 3. Right, how nearest runs: every row group, pending rows included, then the cosine of each vector with the query, then keeping the k best, here 2, then the rows with a score, best first.">
+<defs>
+  <marker id="m14" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m14a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m14m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<line class="guide" x1="120" y1="250" x2="390" y2="250"/>
+<line class="guide" x1="140" y1="270" x2="140" y2="40"/>
+<text class="lab" x="392" y="254">x</text><text class="lab" x="136" y="36" text-anchor="middle">y</text>
+<line class="edge" x1="140" y1="250" x2="318" y2="250" marker-end="url(#m14)"/>
+<line class="edge muted" x1="140" y1="250" x2="140" y2="72" marker-end="url(#m14m)"/>
+<line class="edge" x1="140" y1="250" x2="318" y2="72" marker-end="url(#m14)"/>
+<line class="edge acc" x1="140" y1="250" x2="318" y2="232" marker-end="url(#m14a)"/>
+<text class="t" x="330" y="266">id 1 · [1, 0] · 0.995</text>
+<text class="t" x="330" y="230" fill="currentColor"><tspan class="tt">query</tspan> [1, 0.1]</text>
+<text class="t" x="330" y="76">id 3 · [1, 1] · 0.774</text>
+<text class="t2" x="150" y="64">id 2 · [0, 1] · 0.10</text>
+<text class="lab" x="160" y="290">cosine to the query; the top 2 are ids 1 and 3</text>
+
+<line class="divider" x1="520" y1="20" x2="520" y2="290"/>
+<rect class="box" x="600" y="40" width="360" height="42" rx="3"/>
+<text class="tt" x="612" y="58">Every row group</text><text class="t2" x="612" y="74">batch files, segments and pending rows</text>
+<line class="edge" x1="780" y1="82" x2="780" y2="102" marker-end="url(#m14)"/>
+<rect class="accbox" x="600" y="104" width="360" height="42" rx="3"/>
+<text class="tt" x="612" y="122">Cosine with the query</text><text class="t2" x="612" y="138">the inner product of unit vectors, for every row</text>
+<line class="edge" x1="780" y1="146" x2="780" y2="166" marker-end="url(#m14)"/>
+<rect class="accbox" x="600" y="168" width="360" height="42" rx="3"/>
+<text class="tt" x="612" y="186">Keep the k best</text><text class="t2" x="612" y="202">here k = 2: ids 1 and 3</text>
+<line class="edge" x1="780" y1="210" x2="780" y2="230" marker-end="url(#m14)"/>
+<rect class="box" x="600" y="232" width="360" height="42" rx="3"/>
+<text class="tt" x="612" y="250">Rows with a score</text><text class="t2" x="612" y="266">best first; exact, with no index to build</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>Left, to scale: the example's three vectors and the query, with each one's cosine similarity. Right: how <code>nearest</code> finds them, an exact scan that keeps the k best.</figcaption>
+</figure>
+<div class="prose">
+<p>For example, the two vectors nearest <code>[1.0, 0.1]</code> among three:</p>
+</div>
+<div class="codepair">
+<div>
+<div class="label">vectors.co</div>
+<pre><code>use magpie, frame
+
+a = magpie.batch['vecs', frame.new[id = [1, 2, 3],
+    e = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]], by = ['id']]
+log[magpie.nearest['vecs', 'e', [1.0, 0.1], 2]]</code></pre>
+</div>
+<div>
+<div class="label">Output</div>
+<pre><code>id       e  _pos               score
+int  vector   int               float
+--  ------  ----  ------------------
+ 1  [1, 0]     0  0.9950371902099893
+ 3  [1, 1]     2  0.7739572992033211
+
+[2 rows x 4 cols]</code></pre>
+</div>
+</div>
+</section>
+
+<section id="analytics">
+<h3>Analytics and point-in-time joins</h3>
+<div class="prose">
+<h4>Analytics</h4>
+<p><code>summary</code> computes count, sum, minimum, maximum, mean, variance, standard deviation, and first and last values, grouped by key columns. It can filter by a column compared with a value (equal, not equal, less than and so on), by a range of the first key, and by a position bound. Each row group is pruned by its statistics, decoded for the named columns only, filtered and grouped into partial results, and the partials are combined, the variance by Welford's and Chan's methods. The answer equals Crow's own <code>group</code> over a full <code>scan</code> of the same rows, up to the last digits a different summation order moves.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 290" role="img" aria-label="Two row groups, one per day. Day 1 holds A with price 10 and volume 1, and B with price 20 and volume 2. Day 2 holds A with price 12 and volume 3, and B with price 22 and volume 4. Each group is reduced to partial results per symbol: counts, price sums and volume sums. The partials combine into the answer: A has mean price 11 and total volume 4, B has mean price 21 and total volume 6.">
+<defs>
+  <marker id="m15" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="logbox" x="20" y="40" width="230" height="90" rx="3"/>
+<text class="tt" x="32" y="62">Row group 1 · day 1</text>
+<text class="t" x="32" y="88">A · px 10 · vol 1</text>
+<text class="t" x="32" y="110">B · px 20 · vol 2</text>
+<rect class="logbox" x="20" y="160" width="230" height="90" rx="3"/>
+<text class="tt" x="32" y="182">Row group 2 · day 2</text>
+<text class="t" x="32" y="208">A · px 12 · vol 3</text>
+<text class="t" x="32" y="230">B · px 22 · vol 4</text>
+
+<line class="edge" x1="250" y1="85" x2="328" y2="85" marker-end="url(#m15)"/>
+<line class="edge" x1="250" y1="205" x2="328" y2="205" marker-end="url(#m15)"/>
+<text class="lab" x="289" y="77" text-anchor="middle">group</text>
+<text class="lab" x="289" y="197" text-anchor="middle">group</text>
+
+<rect class="accbox" x="330" y="40" width="270" height="90" rx="3"/>
+<text class="tt" x="342" y="62">Partials</text>
+<text class="t" x="342" y="88">A · n 1 · Σpx 10 · Σvol 1</text>
+<text class="t" x="342" y="110">B · n 1 · Σpx 20 · Σvol 2</text>
+<rect class="accbox" x="330" y="160" width="270" height="90" rx="3"/>
+<text class="tt" x="342" y="182">Partials</text>
+<text class="t" x="342" y="208">A · n 1 · Σpx 12 · Σvol 3</text>
+<text class="t" x="342" y="230">B · n 1 · Σpx 22 · Σvol 4</text>
+
+<path class="edge" d="M600,85 C650,85 660,130 698,138" marker-end="url(#m15)"/>
+<path class="edge" d="M600,205 C650,205 660,160 698,152" marker-end="url(#m15)"/>
+<text class="lab" x="652" y="126" text-anchor="middle">combine</text>
+
+<rect class="box" x="700" y="100" width="320" height="90" rx="3"/>
+<text class="tt" x="712" y="122">The answer</text>
+<text class="t" x="712" y="148">A · mean px 11 · total vol 4</text>
+<text class="t" x="712" y="170">B · mean px 21 · total vol 6</text>
+<text class="lab" x="520" y="278" text-anchor="middle">only px and vol are decoded; no group's rows are kept once its partials are made</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>How <code>summary</code> computes the example below. Each row group is reduced to partial results per key, and the partials are combined into the answer. In this tiny example both days fit in one row group; the split shows how a larger log's groups combine.</figcaption>
+</figure>
+<div class="prose">
+<p>The mean price and total volume per symbol, computed inside the reader:</p>
+</div>
+<div class="codepair">
+<div>
+<div class="label">summary.co</div>
+<pre><code>use magpie, frame
+
+b = magpie.batch['bars', frame.new[day = [1, 1, 2, 2],
+    sym = ['A', 'B', 'A', 'B'], px = [10.0, 20.0, 12.0, 22.0],
+    vol = [1, 2, 3, 4]], by = ['day', 'sym']]
+log[magpie.summary['bars', ['sym'], ['px', 'vol'], ['mean', 'sum']]]</code></pre>
+</div>
+<div>
+<div class="label">Output</div>
+<pre><code>sym  px_mean  vol_sum
+str    float      int
+---  -------  -------
+  A       11        4
+  B       21        6
+
+[2 rows x 3 cols]</code></pre>
+</div>
+</div>
+<div class="prose">
+<h4>Point-in-time joins</h4>
+<p><code>prior</code> is an as-of join. Given a frame of labels, each holding the log's keys and a moment, it finds for each label the newest log row with the same keys at or before that moment, reading each key's run of rows in the sorted segments; a label with no earlier row gets missing cells. Given <code>upto</code>, it also ignores rows written after a position, so a training set built as of a position is identical every time it is rebuilt, provided the log kept the versions it read. The feature store's training sets are built this way and checked cell for cell against pandas's <code>merge_asof</code>.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 260" role="img" aria-label="A timeline from 0 to 30. Symbol A has log rows at time 10 with price 1.0 and at time 20 with price 2.0; symbol B has one row at time 15 with price 5.0. Three labels: A at 25 takes A's newest row at or before 25, the row at 20 with price 2.0; B at 12 gets missing cells because B's only row comes later; A at 5 gets missing cells because it comes before A's first row.">
+<defs>
+  <marker id="m16a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="bandlabel" x="20" y="94">Symbol A</text>
+<text class="bandlabel" x="20" y="184">Symbol B</text>
+<line class="guide" x1="160" y1="90" x2="910" y2="90"/>
+<line class="guide" x1="160" y1="180" x2="910" y2="180"/>
+<line class="edge" x1="160" y1="226" x2="910" y2="226"/>
+<text class="lab" x="160" y="244" text-anchor="middle">0</text><text class="lab" x="285" y="244" text-anchor="middle">5</text><text class="lab" x="410" y="244" text-anchor="middle">10</text><text class="lab" x="535" y="244" text-anchor="middle">15</text><text class="lab" x="660" y="244" text-anchor="middle">20</text><text class="lab" x="785" y="244" text-anchor="middle">25</text><text class="lab" x="910" y="244" text-anchor="middle">30</text>
+<line class="guide" x1="160" y1="222" x2="160" y2="230"/><line class="guide" x1="285" y1="222" x2="285" y2="230"/><line class="guide" x1="410" y1="222" x2="410" y2="230"/><line class="guide" x1="535" y1="222" x2="535" y2="230"/><line class="guide" x1="660" y1="222" x2="660" y2="230"/><line class="guide" x1="785" y1="222" x2="785" y2="230"/><line class="guide" x1="910" y1="222" x2="910" y2="230"/>
+<text class="lab" x="930" y="230">time</text>
+
+<rect class="logbox" x="400" y="80" width="20" height="20" rx="2"/><text class="t" x="410" y="118" text-anchor="middle">px 1.0</text>
+<rect class="logbox" x="650" y="80" width="20" height="20" rx="2"/><text class="t" x="660" y="118" text-anchor="middle">px 2.0</text>
+<rect class="logbox" x="525" y="170" width="20" height="20" rx="2"/><text class="t" x="535" y="208" text-anchor="middle">px 5.0</text>
+
+<circle class="accbox" cx="785" cy="90" r="9"/>
+<path class="edge acc" d="M778,82 C750,46 690,46 666,76" marker-end="url(#m16a)"/>
+<text class="lab" x="725" y="40" text-anchor="middle">label A at 25 → px 2.0</text>
+<circle class="accbox" cx="285" cy="90" r="9"/>
+<text class="lab" x="285" y="64" text-anchor="middle">label A at 5 → missing</text>
+<circle class="accbox" cx="460" cy="180" r="9"/>
+<text class="lab" x="460" y="154" text-anchor="middle">label B at 12 → missing</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>The example below on a timeline. Amber squares are log rows and blue circles are labels; each label takes the newest row of its symbol at or before its own moment, and gets missing cells where there is none.</figcaption>
+</figure>
+<div class="prose">
+<p>In the example below, the label for A at 25 gets A's row from 20. B at 12 gets missing cells, because B's only row comes later, at 15, and A at 5 comes before A's first row.</p>
+</div>
+<div class="codepair">
+<div>
+<div class="label">asof.co</div>
+<pre><code>use magpie, frame
+
+c = magpie.batch['prices', frame.new[sym = ['A', 'A', 'B'],
+    t = [10, 20, 15], px = [1.0, 2.0, 5.0]], by = ['sym'], time = 't']
+labels = frame.new[sym = ['A', 'B', 'A'], t = [25, 12, 5]]
+log[magpie.prior['prices', labels]]</code></pre>
+</div>
+<div>
+<div class="label">Output</div>
+<pre><code>sym   t       px
+str  int    float
+---  --  -------
+  A  25        2
+  B  12  missing
+  A   5  missing
+
+[3 rows x 3 cols]</code></pre>
+</div>
+</div>
+<div class="prose">
+<p>These operations make the log useful for application state, retrieval, analytics, and training-data construction.</p>
+</div>
+</section>
+
+<div class="part" id="part4">
+<div class="part-num">Part 4</div>
+<h2>Packages and protocols</h2>
+<p>What is built on the engine, and how programs outside Crow reach it.</p>
+</div>
+
+<section id="packages">
+<h3>Built on the engine: a knowledge graph and an ML feature store</h3>
+<div class="prose">
+<p>Two packages in Magpie's repository are written entirely on the engine's operations, each in a few hundred lines of Crow. They show what the shared log makes cheap: history, point-in-time reads and similarity search come with the storage instead of being built beside it.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 360" role="img" aria-label="Two panels. Left, the knowledge graph: a small graph in which alice and bob work at acme and alice knows bob is stored as four Magpie logs, nodes keyed by id, edges keyed by source, relation and target, the same edges reversed, and node embeddings; reads such as neighbors, inbound, walk, path, match, subgraph, asof and similar read those logs, removals are tombstones and every read can take a past position. Right, the feature store: a source log feeds one Crow feature function by backfill over windows or by stream over the tail; the function appends to one feature-group log keyed by entity with event time, which serves the online value from memory, the offline history by position, and training sets joined as of each label's moment.">
+<defs>
+  <marker id="m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m7l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m7a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+
+<text class="bandlabel" x="30" y="24">Knowledge graph · kg</text>
+<line class="edge" x1="132" y1="79" x2="231" y2="65" marker-end="url(#m7)"/>
+<text class="lab" x="181" y="63" text-anchor="middle">works_at</text>
+<line class="edge" x1="378" y1="82" x2="279" y2="66" marker-end="url(#m7)"/>
+<text class="lab" x="328" y="65" text-anchor="middle">works_at</text>
+<path class="edge" d="M124,99 Q255,150 381,102" marker-end="url(#m7)"/>
+<text class="lab" x="255" y="116" text-anchor="middle">knows</text>
+<circle class="box" cx="110" cy="82" r="22"/><text class="t2" x="110" y="86" text-anchor="middle">alice</text>
+<circle class="box" cx="255" cy="62" r="22"/><text class="t2" x="255" y="66" text-anchor="middle">acme</text>
+<circle class="box" cx="400" cy="86" r="22"/><text class="t2" x="400" y="90" text-anchor="middle">bob</text>
+<line class="edge log" x1="255" y1="132" x2="255" y2="160" marker-end="url(#m7l)"/>
+<text class="lab" x="263" y="150">stored as Magpie logs</text>
+
+<rect class="logbox" x="30" y="164" width="110" height="60" rx="3"/>
+<text class="tt" x="85" y="184" text-anchor="middle">nodes</text><text class="t2" x="85" y="200" text-anchor="middle">by id</text><text class="t2" x="85" y="214" text-anchor="middle">label, properties</text>
+<rect class="logbox" x="152" y="164" width="110" height="60" rx="3"/>
+<text class="tt" x="207" y="184" text-anchor="middle">edges</text><text class="t2" x="207" y="200" text-anchor="middle">by src, rel, dst</text><text class="t2" x="207" y="214" text-anchor="middle">weight, provenance</text>
+<rect class="logbox" x="274" y="164" width="110" height="60" rx="3"/>
+<text class="tt" x="329" y="184" text-anchor="middle">back</text><text class="t2" x="329" y="200" text-anchor="middle">by dst, rel, src</text><text class="t2" x="329" y="214" text-anchor="middle">the edges reversed</text>
+<rect class="logbox" x="396" y="164" width="110" height="60" rx="3"/>
+<text class="tt" x="451" y="184" text-anchor="middle">vectors</text><text class="t2" x="451" y="200" text-anchor="middle">by id</text><text class="t2" x="451" y="214" text-anchor="middle">node embeddings</text>
+<line class="edge read" x1="85" y1="224" x2="85" y2="260" marker-end="url(#m7a)"/>
+<line class="edge read" x1="207" y1="224" x2="207" y2="260" marker-end="url(#m7a)"/>
+<line class="edge read" x1="329" y1="224" x2="329" y2="260" marker-end="url(#m7a)"/>
+<line class="edge read" x1="451" y1="224" x2="451" y2="260" marker-end="url(#m7a)"/>
+<rect class="accbox" x="30" y="262" width="476" height="44" rx="3"/>
+<text class="t" x="268" y="280" text-anchor="middle">neighbors · inbound · walk · path · match · subgraph</text>
+<text class="t2" x="268" y="297" text-anchor="middle">asof (through prior) · similar (through nearest) · rules that derive edges</text>
+<rect class="dashed" x="30" y="318" width="476" height="28" rx="3"/>
+<text class="t2" x="268" y="336" text-anchor="middle">removals are tombstones; every read can take a past position</text>
+
+<line class="divider" x1="520" y1="14" x2="520" y2="346"/>
+
+<text class="bandlabel" x="550" y="24">ML feature store · features</text>
+<rect class="logbox" x="550" y="40" width="150" height="52" rx="3"/>
+<text class="tt" x="625" y="62" text-anchor="middle">Source events</text><text class="t2" x="625" y="79" text-anchor="middle">any Magpie log</text>
+<line class="edge log" x1="700" y1="56" x2="848" y2="56" marker-end="url(#m7l)"/>
+<text class="lab" x="774" y="50" text-anchor="middle">backfill: windows</text>
+<line class="edge log" x1="700" y1="78" x2="848" y2="78" marker-end="url(#m7l)"/>
+<text class="lab" x="774" y="94" text-anchor="middle">stream: the tail</text>
+<rect class="box" x="850" y="40" width="160" height="52" rx="3"/>
+<text class="tt" x="930" y="62" text-anchor="middle">Feature function</text><text class="t2" x="930" y="79" text-anchor="middle">one Crow function</text>
+<line class="edge log" x1="930" y1="92" x2="842" y2="128" marker-end="url(#m7l)"/>
+<text class="lab" x="902" y="122">append</text>
+<rect class="logbox" x="640" y="130" width="280" height="52" rx="3"/>
+<text class="tt" x="780" y="152" text-anchor="middle">Feature group</text><text class="t2" x="780" y="169" text-anchor="middle">one log, keyed by entity, with event time</text>
+<line class="edge read" x1="700" y1="182" x2="625" y2="224" marker-end="url(#m7a)"/>
+<text class="lab" x="650" y="198" text-anchor="end">latest</text>
+<line class="edge read" x1="780" y1="182" x2="780" y2="224" marker-end="url(#m7a)"/>
+<text class="lab" x="788" y="206">history</text>
+<line class="edge read" x1="860" y1="182" x2="935" y2="224" marker-end="url(#m7a)"/>
+<text class="lab" x="906" y="198">prior</text>
+<rect class="accbox" x="550" y="226" width="146" height="60" rx="3"/>
+<text class="tt" x="562" y="246">Online</text><text class="t2" x="562" y="262">newest row per entity,</text><text class="t2" x="562" y="276">from memory</text>
+<rect class="accbox" x="707" y="226" width="146" height="60" rx="3"/>
+<text class="tt" x="719" y="246">Offline</text><text class="t2" x="719" y="262">the history,</text><text class="t2" x="719" y="276">read by position</text>
+<rect class="accbox" x="864" y="226" width="146" height="60" rx="3"/>
+<text class="tt" x="876" y="246">Training sets</text><text class="t2" x="876" y="262">labels joined as of</text><text class="t2" x="876" y="276">each label's moment</text>
+<rect class="dashed" x="550" y="318" width="460" height="28" rx="3"/>
+<text class="t2" x="780" y="336" text-anchor="middle">one function for backfill and stream: training and serving compute features alike</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>Left: <code>kg</code> keeps a graph as four Magpie logs (nodes, edges, the edges reversed, and node embeddings), so each graph read is a Magpie read of one of them. Right: a feature group is one log; one function fills it from a source log by backfill or by stream, and the same log serves the online value, the offline history and point-in-time training sets.</figcaption>
+</figure>
+<div class="prose">
+<h4>Knowledge graph</h4>
+<p><code>kg</code> keeps a graph's nodes and edges as Magpie logs under one directory. Edges are keyed by source, relation and target, with a weight and the fact's provenance, and are written a second time keyed by target, so a node's outgoing and incoming edges are each one key's run in a sorted segment. Removing a fact writes a tombstone, and every read takes a position, so the graph can be read as it stood at any point in its history.</p>
+<p>On that base, <code>kg</code> answers neighbors, breadth-first walks, shortest paths, pattern matches joined on shared variables, rules that derive new edges, and the edges as they stood at each row's moment. Node embeddings live in a fourth log, so an entity can be found by meaning with <code>similar</code> and then expanded through its edges. A subgraph can be handed to Crow's <code>graph</code> package for PageRank, connected components and shortest paths.</p>
+<h4>ML feature store</h4>
+<p><code>features</code> makes a feature group a log keyed by its entity, with its event time declared. One write then serves both sides of a feature store: the online value is the entity's newest row, read from the sequencer's memory, and the offline history is the log itself. No job copies one into the other.</p>
+<p>A feature is defined once, as one Crow function. The same function runs over windows of the source log for a backfill and over its tail for streaming, so training and serving compute features the same way. A training set joins labels to each feature group as of each label's moment, through <code>prior</code>; given a position, it comes out identical at every rebuild. Embeddings are features like any other, and a registry log records what each feature means and which function computes it.</p>
+</div>
+<div class="tablewrap">
+<table class="prose-table">
+<thead><tr><th>Package capability</th><th>Magpie operations underneath</th></tr></thead>
+<tbody>
+<tr><td>Graph history and time travel</td><td>Tombstone rows, and every read bounded by <code>upto</code></td></tr>
+<tr><td>A node's edges, walks and paths</td><td>Key-sorted logs: a node's edges are one key's run, and a walk reads each hop as one key range</td></tr>
+<tr><td>Edges as of a moment; training sets</td><td><code>prior</code>, the as-of join</td></tr>
+<tr><td>Similar entities; embeddings as features</td><td><code>nearest</code> over a column of vectors</td></tr>
+<tr><td>Online feature reads</td><td><code>latest</code> of one key, from the sequencer's memory</td></tr>
+<tr><td>Streaming features</td><td><code>tail</code>, the rows past a position</td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p>The feature store's training sets are checked cell for cell against pandas's <code>merge_asof</code>.</p>
+</div>
+</section>
+
+<section id="clients">
+<h3>Three network protocols: HTTP, Redis, and Kafka</h3>
+<div class="prose">
+<p>Crow programs call Magpie inside their own process. For everything else, Magpie implements three network protocols itself, each a small server written in Crow:</p>
+<ul class="plain">
+<li><b>HTTP</b> carries Magpie's own operations. A request names a log and an operation such as <code>latest</code>, <code>search</code> or <code>put</code>, and rows travel as JSON.</li>
+<li><b>Redis's protocol</b> (RESP2) lets Redis clients use Magpie as if it were a Redis server.</li>
+<li><b>Kafka's protocol</b> lets Kafka producers and consumers use Magpie as if it were a Kafka broker.</li>
+</ul>
+<p>No Redis or Kafka runs anywhere, and nothing copies data from one into Magpie. The engine underneath is Magpie's in every case: a Redis key and a Kafka topic are both Magpie logs, so a Crow program can read, search and aggregate the same data the other clients write.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 300" role="img" aria-label="Clients on the left: curl or any HTTP client, another Crow program, redis-cli or Redis libraries, and Kafka producers and consumers. In the middle, inside Magpie, three servers: an HTTP server for Magpie's own operations, a Redis server and a Kafka server. On the right, the Magpie logs they read and write: any log by name, the key-value log and streams, and a log per topic with the group and offset logs. One engine underneath; no Redis or Kafka runs anywhere.">
+<defs>
+  <marker id="m11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m11l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="box" x="20" y="40" width="230" height="44" rx="3"/>
+<text class="tt" x="32" y="58">curl, any HTTP client</text><text class="t2" x="32" y="75">GET and POST, JSON rows</text>
+<rect class="box" x="20" y="96" width="230" height="44" rx="3"/>
+<text class="tt" x="32" y="114">Another Crow program</text><text class="t2" x="32" y="131">the same calls, given a URL</text>
+<rect class="box" x="20" y="152" width="230" height="44" rx="3"/>
+<text class="tt" x="32" y="170">redis-cli, Redis libraries</text><text class="t2" x="32" y="187">the Redis protocol, RESP2</text>
+<rect class="box" x="20" y="208" width="230" height="44" rx="3"/>
+<text class="tt" x="32" y="226">Kafka producers, consumers</text><text class="t2" x="32" y="243">the Kafka protocol</text>
+
+<rect class="box" x="320" y="24" width="390" height="244" rx="4"/>
+<text class="logt" x="515" y="48" text-anchor="middle">Magpie</text>
+<rect class="accbox" x="340" y="62" width="350" height="50" rx="3"/>
+<text class="tt" x="352" y="82">HTTP server</text><text class="t2" x="352" y="99">magpie.door · Magpie's own operations</text>
+<rect class="accbox" x="340" y="130" width="350" height="50" rx="3"/>
+<text class="tt" x="352" y="150">Redis server</text><text class="t2" x="352" y="167">redis.serve · Redis commands on Magpie logs</text>
+<rect class="accbox" x="340" y="198" width="350" height="50" rx="3"/>
+<text class="tt" x="352" y="218">Kafka server</text><text class="t2" x="352" y="235">kafka.serve · Kafka requests on Magpie logs</text>
+
+<rect class="logbox" x="780" y="62" width="240" height="50" rx="3"/>
+<text class="tt" x="792" y="82">shop/orders</text><text class="t2" x="792" y="99">any log, by its name</text>
+<rect class="logbox" x="780" y="130" width="240" height="50" rx="3"/>
+<text class="tt" x="792" y="150">cache/_kv and streams</text><text class="t2" x="792" y="167">a row per write</text>
+<rect class="logbox" x="780" y="198" width="240" height="50" rx="3"/>
+<text class="tt" x="792" y="218">events/orders</text><text class="t2" x="792" y="235">a log per topic, _groups, _offsets</text>
+
+<line class="edge" x1="250" y1="62" x2="338" y2="82" marker-end="url(#m11)"/>
+<line class="edge" x1="250" y1="118" x2="338" y2="94" marker-end="url(#m11)"/>
+<line class="edge" x1="250" y1="174" x2="338" y2="155" marker-end="url(#m11)"/>
+<line class="edge" x1="250" y1="230" x2="338" y2="223" marker-end="url(#m11)"/>
+<line class="edge log" x1="690" y1="87" x2="778" y2="87" marker-end="url(#m11l)"/>
+<line class="edge log" x1="690" y1="155" x2="778" y2="155" marker-end="url(#m11l)"/>
+<line class="edge log" x1="690" y1="223" x2="778" y2="223" marker-end="url(#m11l)"/>
+<text class="lab" x="515" y="290" text-anchor="middle">one engine underneath: no Redis or Kafka runs anywhere</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>Each protocol is a small server inside Magpie, written in Crow. HTTP carries Magpie's own operations; the Redis and Kafka servers turn those systems' commands into reads and writes of Magpie logs.</figcaption>
+</figure>
+<div class="prose">
+<h4>HTTP: Magpie's operations over the network</h4>
+<p>The HTTP server exposes the operations a Crow program calls. A request's path names the log and the operation, the query string carries the arguments, and a POST body carries rows as JSON records:</p>
+<ul class="plain">
+<li><b>GET</b> for reads: <code>latest</code>, <code>lookup</code>, <code>since</code>, <code>scan</code>, <code>search</code>, <code>nearest</code>, <code>summary</code>, <code>head</code>, and the catalog (<code>batches</code>, <code>metrics</code>).</li>
+<li><b>POST with rows</b> for writes and joins: <code>put</code>, <code>batch</code>, <code>commit</code>, <code>prior</code>.</li>
+<li><b>POST with no body</b> for <code>merge</code> and <code>sync</code>.</li>
+</ul>
+<p>Answers are JSON. A refused request gets status 400 with the reason, and an unknown log or operation gets 404. Another Crow program can pass the server's URL wherever it would pass a directory, and the same calls travel over HTTP.</p>
+</div>
+<div class="codepair">
+<div>
+<div class="label">server.co</div>
+<pre><code>use magpie, frame
+
+made = magpie.batch['shop/orders', frame.new[
+    id = [1, 2], qty = [3, 12]], by = ['id']]
+served = magpie.door['shop', 9001]</code></pre>
+<div class="label">client.co, another process</div>
+<pre><code>use magpie
+
+log[magpie.latest['http://localhost:9001/orders'].qty]
+--- [3, 12]</code></pre>
+</div>
+<div>
+<div class="label">A terminal</div>
+<pre><code>$ curl 'localhost:9001/orders/latest'
+[{"_pos":0,"id":1,"qty":3},{"_pos":1,"id":2,"qty":12}]
+
+$ curl 'localhost:9001/orders/lookup?on=id&amp;equal=2'
+[{"_pos":1,"id":2,"qty":12}]</code></pre>
+</div>
+</div>
+<div class="prose">
+<p>All three servers listen on localhost by default, and none has authentication or TLS built in.</p>
+</div>
+</section>
+
+<section id="redis">
+<h3>The Redis protocol</h3>
+<div class="prose">
+<p>Magpie's Redis server speaks RESP2, the protocol <code>redis-cli</code> and Redis client libraries use, so they connect to Magpie unchanged. Keys and values live in one Magpie log under the server's root, named <code>_kv</code>, with a row per write. A read is answered from the sequencer's in-memory index of each key's newest row, so a GET is a memory lookup, as it is in Redis. Streams are logs of their own, and a stream entry's id is its position in that log.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 262" role="img" aria-label="redis-cli or any Redis library sends RESP2 commands to Magpie's Redis server. SET, MSET, INCR and DEL become rows in the _kv log. GET, MGET and EXISTS read a key's newest row from the sequencer's memory. KEYS and DBSIZE read every key's newest row. XADD appends to a log per stream, where an entry's id is its position. XRANGE, XREAD and XLEN read by position.">
+<defs>
+  <marker id="m9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m9l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m9a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="box" x="20" y="108" width="180" height="52" rx="3"/>
+<text class="tt" x="110" y="130" text-anchor="middle">redis-cli</text><text class="t2" x="110" y="147" text-anchor="middle">or any Redis library</text>
+<line class="edge" x1="200" y1="134" x2="258" y2="134" marker-end="url(#m9)"/>
+<text class="lab" x="229" y="126" text-anchor="middle">RESP2</text>
+<rect class="box" x="260" y="24" width="180" height="220" rx="3"/>
+<text class="tt" x="350" y="126" text-anchor="middle">Redis server</text><text class="t2" x="350" y="144" text-anchor="middle">redis.serve</text><text class="t2" x="350" y="160" text-anchor="middle">one loop, every connection</text>
+
+<line class="edge" x1="440" y1="42" x2="498" y2="42" marker-end="url(#m9)"/>
+<rect class="soft" x="500" y="24" width="190" height="36" rx="3"/><text class="lab" x="595" y="46" text-anchor="middle">SET, MSET, INCR, DEL</text>
+<line class="edge log" x1="690" y1="42" x2="738" y2="42" marker-end="url(#m9l)"/>
+<rect class="logbox" x="740" y="24" width="280" height="36" rx="3"/><text class="tt" x="752" y="39">The _kv log</text><text class="t2" x="752" y="53">a row per write: key, value, deleted flag</text>
+
+<line class="edge" x1="440" y1="88" x2="498" y2="88" marker-end="url(#m9)"/>
+<rect class="soft" x="500" y="70" width="190" height="36" rx="3"/><text class="lab" x="595" y="92" text-anchor="middle">GET, MGET, EXISTS</text>
+<line class="edge read" x1="690" y1="88" x2="738" y2="88" marker-end="url(#m9a)"/>
+<rect class="accbox" x="740" y="70" width="280" height="36" rx="3"/><text class="tt" x="752" y="85">A key's newest row</text><text class="t2" x="752" y="99">from the sequencer's memory</text>
+
+<line class="edge" x1="440" y1="134" x2="498" y2="134" marker-end="url(#m9)"/>
+<rect class="soft" x="500" y="116" width="190" height="36" rx="3"/><text class="lab" x="595" y="138" text-anchor="middle">KEYS, DBSIZE</text>
+<line class="edge read" x1="690" y1="134" x2="738" y2="134" marker-end="url(#m9a)"/>
+<rect class="accbox" x="740" y="116" width="280" height="36" rx="3"/><text class="tt" x="752" y="131">Every key's newest row</text><text class="t2" x="752" y="145">the latest of the _kv log</text>
+
+<line class="edge" x1="440" y1="180" x2="498" y2="180" marker-end="url(#m9)"/>
+<rect class="soft" x="500" y="162" width="190" height="36" rx="3"/><text class="lab" x="595" y="184" text-anchor="middle">XADD</text>
+<line class="edge log" x1="690" y1="180" x2="738" y2="180" marker-end="url(#m9l)"/>
+<rect class="logbox" x="740" y="162" width="280" height="36" rx="3"/><text class="tt" x="752" y="177">A log per stream</text><text class="t2" x="752" y="191">the entry id is the position</text>
+
+<line class="edge" x1="440" y1="226" x2="498" y2="226" marker-end="url(#m9)"/>
+<rect class="soft" x="500" y="208" width="190" height="36" rx="3"/><text class="lab" x="595" y="230" text-anchor="middle">XRANGE, XREAD, XLEN</text>
+<line class="edge read" x1="690" y1="226" x2="738" y2="226" marker-end="url(#m9a)"/>
+<rect class="accbox" x="740" y="208" width="280" height="36" rx="3"/><text class="tt" x="752" y="223">Reads by position</text><text class="t2" x="752" y="237">since and scan</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>How Redis commands map onto Magpie. Writes become rows in the <code>_kv</code> log or in a stream's log; reads come from the sequencer's memory or by position.</figcaption>
+</figure>
+<div class="prose">
+<p>Starting the server takes one line, and <code>redis-cli</code> works against it unchanged:</p>
+</div>
+<div class="codepair">
+<div>
+<div class="label">server.co</div>
+<pre><code>use magpie.redis
+
+served = redis.serve['cache', 6380]</code></pre>
+</div>
+<div>
+<div class="label">A terminal</div>
+<pre><code>$ redis-cli -p 6380 SET greeting hello
+OK
+$ redis-cli -p 6380 GET greeting
+"hello"
+$ redis-cli -p 6380 INCR visits
+(integer) 1</code></pre>
+</div>
+</div>
+<div class="prose">
+<p>A SET is a Magpie put: visible at once, and on disk at the next flush. Because the keys are an ordinary Magpie log, a Crow program can also read a key's history, search the values, or aggregate them with the operations described earlier.</p>
+<p>Not supported yet: EXPIRE and TTL (Magpie has no expiry column yet), lists, hashes, sets and sorted sets, pub/sub, MULTI and Lua scripts, and XREAD's BLOCK option. KEYS takes <code>*</code> or a single key, and XADD takes <code>*</code> ids only.</p>
+</div>
+</section>
+
+<section id="kafka">
+<h3>The Kafka protocol</h3>
+<div class="prose">
+<p>Magpie's Kafka server answers as a Kafka 0.10.1 broker does. A Kafka client first asks the broker which protocol versions it speaks and then uses those, so producers and consumers connect to Magpie unchanged; it is tested with the kafka-python client. Each topic is a Magpie log with one partition, and a record's offset is its position in that log. Consumer groups keep their memberships and committed offsets in two more logs, <code>_groups</code> and <code>_offsets</code>.</p>
+</div>
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 1040 270" role="img" aria-label="Producers send Produce requests to Magpie's Kafka server, which appends the records to the topic's log and syncs it before acknowledging. A consumer group receives records fetched from its offset, and sends group and commit requests. The topic log has one partition and an offset equal to the position. Group memberships go to the _groups log and committed offsets to the _offsets log. Crow programs read the same topic log with since, search and summary.">
+<defs>
+  <marker id="m10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m10l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-log" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m10a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-acc" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="box" x="20" y="40" width="180" height="52" rx="3"/>
+<text class="tt" x="110" y="62" text-anchor="middle">Producers</text><text class="t2" x="110" y="79" text-anchor="middle">kafka-python and others</text>
+<rect class="box" x="20" y="180" width="180" height="60" rx="3"/>
+<text class="tt" x="110" y="203" text-anchor="middle">Consumer group</text><text class="t2" x="110" y="220" text-anchor="middle">reads from its offset</text>
+<line class="edge log" x1="200" y1="66" x2="268" y2="66" marker-end="url(#m10l)"/>
+<text class="lab" x="234" y="58" text-anchor="middle">Produce</text>
+<line class="edge read" x1="268" y1="196" x2="202" y2="196" marker-end="url(#m10a)"/>
+<text class="lab" x="234" y="188" text-anchor="middle">records</text>
+<line class="edge" x1="200" y1="226" x2="268" y2="226" marker-end="url(#m10)"/>
+<text class="lab" x="234" y="244" text-anchor="middle">join, commit</text>
+<rect class="box" x="270" y="24" width="200" height="230" rx="3"/>
+<text class="tt" x="370" y="126" text-anchor="middle">Kafka server</text><text class="t2" x="370" y="144" text-anchor="middle">kafka.serve</text><text class="t2" x="370" y="160" text-anchor="middle">a 0.10.1 broker's protocol</text>
+
+<line class="edge log" x1="470" y1="62" x2="578" y2="62" marker-end="url(#m10l)"/>
+<text class="lab" x="524" y="54" text-anchor="middle">append, synced</text>
+<line class="edge read" x1="578" y1="92" x2="472" y2="92" marker-end="url(#m10a)"/>
+<text class="lab" x="524" y="108" text-anchor="middle">fetch</text>
+<rect class="logbox" x="580" y="40" width="240" height="70" rx="3"/>
+<text class="tt" x="700" y="62" text-anchor="middle">events/orders</text><text class="t2" x="700" y="80" text-anchor="middle">one partition</text><text class="t2" x="700" y="96" text-anchor="middle">offset = position</text>
+<line class="edge log" x1="470" y1="171" x2="578" y2="171" marker-end="url(#m10l)"/>
+<rect class="logbox" x="580" y="150" width="240" height="42" rx="3"/>
+<text class="tt" x="700" y="168" text-anchor="middle">_groups</text><text class="t2" x="700" y="184" text-anchor="middle">members and generations</text>
+<line class="edge log" x1="470" y1="229" x2="578" y2="229" marker-end="url(#m10l)"/>
+<rect class="logbox" x="580" y="208" width="240" height="42" rx="3"/>
+<text class="tt" x="700" y="226" text-anchor="middle">_offsets</text><text class="t2" x="700" y="242" text-anchor="middle">committed offsets</text>
+
+<line class="edge read" x1="820" y1="75" x2="868" y2="75" marker-end="url(#m10a)"/>
+<rect class="accbox" x="870" y="40" width="150" height="70" rx="3"/>
+<text class="tt" x="945" y="62" text-anchor="middle">Crow programs</text><text class="t2" x="945" y="80" text-anchor="middle">since, search,</text><text class="t2" x="945" y="96" text-anchor="middle">summary</text>
+</svg>
+</div>
+<figcaption><span class="tag">Illustrative</span>A topic is a Magpie log. A produce appends to it and is acknowledged once the batch is on disk, a fetch reads from an offset, and consumer groups keep their state in two more logs. Crow programs read the same topic as any other log.</figcaption>
+</figure>
+<div class="tablewrap">
+<table class="prose-table">
+<thead><tr><th>Kafka</th><th>In Magpie</th></tr></thead>
+<tbody>
+<tr><td>A topic</td><td>A log under the server's root, with one partition</td></tr>
+<tr><td>An offset</td><td>The record's position in that log</td></tr>
+<tr><td>Produce</td><td>The records appended as one batch, on disk before the acknowledgement</td></tr>
+<tr><td>Fetch</td><td>The rows from an offset, at most 1,000 at a time; with nothing new, the server waits up to the client's <code>max_wait_ms</code></td></tr>
+<tr><td>Consumer groups</td><td>Joins, rebalances and heartbeats, with members kept in the <code>_groups</code> log</td></tr>
+<tr><td>Committed offsets</td><td>The <code>_offsets</code> log</td></tr>
+<tr><td>Compressed messages</td><td>gzip and Snappy, decoded by Magpie's own Crow code</td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p>With the server started by <code>kafka.serve['events', 9093]</code>, a producer and a consumer group written with kafka-python 3.0.11 work as they would against Kafka, and a Crow program reads the same records as a Magpie log:</p>
+</div>
+<div class="codepair">
+<div>
+<div class="label">client.py</div>
+<pre><code>from kafka import KafkaProducer, KafkaConsumer
+
+producer = KafkaProducer(bootstrap_servers='localhost:9093')
+for key, value in [(b'o1', b'created'), (b'o2', b'created'),
+                   (b'o1', b'shipped')]:
+    meta = producer.send('orders', key=key, value=value).get(timeout=15)
+    print('produced at offset', meta.offset)
+producer.close()
+
+consumer = KafkaConsumer('orders', bootstrap_servers='localhost:9093',
+                         group_id='billing', auto_offset_reset='earliest',
+                         consumer_timeout_ms=5000)
+for msg in consumer:
+    print(msg.offset, msg.key.decode(), msg.value.decode())
+consumer.close()</code></pre>
+</div>
+<div>
+<div class="label">Output</div>
+<pre><code>produced at offset 0
+produced at offset 1
+produced at offset 2
+0 o1 created
+1 o2 created
+2 o1 shipped</code></pre>
+</div>
+</div>
+<div class="codepair">
+<div>
+<div class="label">read.co</div>
+<pre><code>use magpie
+
+log[magpie.since['events/orders', 0, -1, ['key', 'value', '_pos']]]</code></pre>
+</div>
+<div>
+<div class="label">Output</div>
+<pre><code>key    value  _pos
+str      str   int
+---  -------  ----
+ o1  created     0
+ o2  created     1
+ o1  shipped     2
+
+[3 rows x 3 cols]</code></pre>
+</div>
+</div>
+<div class="prose">
+<p>A produce is acknowledged only after its batch is on disk. A client that retries after a lost acknowledgement appends the records again, so delivery is at-least-once, as with a Kafka producer that is not idempotent.</p>
+<p>Not supported yet: the newer record format (magic 2) and its headers, LZ4 and Zstandard compression, more than one partition per topic, SASL and TLS, idempotent and transactional producers, and the topic-administration requests (a topic is created when it is first used). Record values must be UTF-8 text.</p>
+</div>
+</section>
+
+<div class="part" id="part5">
+<div class="part-num">Part 5</div>
+<h2>In practice</h2>
+<p>Measurements, a complete example, where Magpie fits today, and availability.</p>
+</div>
+
+<section id="measurements">
+<h3>Early measurements</h3>
+<div class="prose">
+<p>Initial measurements used an Apple M4 Max with 64 GB of memory.</p>
+<p>A market-data dataset contained approximately 11.3 million bars and 19.2 million quotes. Merging produced a 289 MB segment for the bars and a 240 MB segment for the quotes.</p>
+<p>Representative reads from the files included:</p>
+</div>
+<div class="tablewrap">
+<p class="tablecap"><span class="tag measured">Measured</span>October 30, 2026</p>
+<table class="prose-table">
+<thead><tr><th>Operation</th><th class="n">Measured time</th></tr></thead>
+<tbody>
+<tr><td>One symbol's day as minute candles with running volume-weighted price</td><td class="n">10 ms</td></tr>
+<tr><td>Last price, high, and volume up to an instant</td><td class="n">11 ms</td></tr>
+<tr><td>Top 20 symbols by daily volume</td><td class="n">38 ms</td></tr>
+<tr><td>Monthly volume grouped by day over 11.3 million rows</td><td class="n">108 ms</td></tr>
+<tr><td>Top 10 for a common word over 100,000 short texts, through the index</td><td class="n">17 ms</td></tr>
+<tr><td>Exact nearest 10 among 100,000 vectors of width 64</td><td class="n">22 ms</td></tr>
+<tr><td>Knowledge-graph walk of three hops, reaching 1,022 of 5,000 nodes</td><td class="n">29 ms</td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<p class="note">How measured: compiled programs (<code>crow build</code>), each time the warm median, from the call to the answer in hand, with the data read from the files at every run. The answers to the price, top-20 and monthly-volume questions matched those of the ClickHouse database the data came from.</p>
+<p>These are early measurements on one machine with datasets that fit in memory. They do not establish performance beyond memory capacity or under many concurrent clients.</p>
+<p>Durable single-write latency is another important limit. A batch that reached disk before returning took about 13.4 ms on the measured machine, largely due to flushing the file and its directory. Grouping durable commits into shared flushes is a planned improvement.</p>
+</div>
+</section>
+
+<section id="example">
+<h3>A small example</h3>
+<div class="prose">
+<p>Crow uses square brackets for function calls. This program creates an orders log, updates an order, and reads the same data in several ways:</p>
+</div>
+<div class="codepair">
+<div>
+<div class="label">orders.co</div>
+<pre><code>use magpie, frame
+
+first = magpie.batch['orders', frame.new[
+    id = [1, 2],
+    item = ['apples', 'pears'],
+    note = ['a crate for the shop', 'pears for the kitchen'],
+    qty = [3, 12]], by = ['id']]
+
+second = magpie.put['orders', frame.new[
+    id = [2, 3],
+    item = ['pears', 'plums'],
+    note = ['more pears', 'plums for the kitchen table'],
+    qty = [20, 7]]]
+
+log[magpie.latest['orders']]
+log[magpie.latest['orders', equal = ['2']].qty]
+log[magpie.search['orders', 'note', ['kitchen table'], 3].item]
+log[magpie.since['orders', 2].item]</code></pre>
+</div>
+<div>
+<div class="label">Output, interpreted and compiled</div>
+<pre><code>id    item                  note  qty  _pos
+int     str                   str  int   int
+--  ------  --------------------  ---  ----
+ 1  apples  a crate for the shop    3     0
+ 2   pears            more pears   20     2
+ 3   plums  plums for the kit...    7     3
+
+[3 rows x 5 cols]
+[20]
+['plums']
+['pears', 'plums']</code></pre>
+</div>
+</div>
+<div class="prose">
+<p>The current table contains three orders. Order 2 has quantity 20 because its newer row supersedes its earlier value.</p>
+<p>The key read returns <code>[20]</code>. The phrase search returns <code>['plums']</code>. Reading changes from position 2 returns <code>['pears', 'plums']</code>.</p>
+<p>Those results come from the same writes, including rows still pending in the writing process. <code>log[x]</code> prints <code>x</code>, and the program prints the same output whether Crow interprets it or compiles it.</p>
+</div>
+</section>
+
+<section class="prose" id="fits">
+<h3>Where Magpie fits</h3>
+<p>Today, Magpie suits applications that can keep a log on one machine and benefit from several access patterns over the same writes.</p>
+<p>Its appeal is a smaller set of moving parts: current state, change consumption, search, vectors, and analytics share an engine and a storage format, and the knowledge graph and feature store are built from the same operations. Crow supplies the programming and query interface, and programs in other languages reach the same data over HTTP or the Redis and Kafka protocols.</p>
+<h4>A good fit today</h4>
+<ul class="plain">
+<li>An application whose data fits on one machine and that needs several of these reads over the same writes, such as current state, change streams, search and analytics.</li>
+<li>Machine-learning pipelines that need online features and point-in-time-correct training sets from one write.</li>
+<li>Services that use Redis or Kafka clients for keys, streams or events, within the commands and requests Magpie supports.</li>
+</ul>
+<h4>Current limits</h4>
+<p>The present boundaries are substantial:</p>
+<ul class="plain">
+<li>One writing process per log.</li>
+<li>Asynchronous followers with manual promotion; no automatic failover.</li>
+<li>Transactions within one log, with key-based conflict checks.</li>
+<li>Historical reads limited by the chosen retention policy.</li>
+<li>Each durable write pays a full disk flush, about 13 ms on the machine measured.</li>
+<li>Exact vector search only.</li>
+<li>Explicitly scheduled merges.</li>
+<li>Schema changes through a new log.</li>
+<li>No SQL: queries are Crow programs, or HTTP calls to Magpie's operations.</li>
+<li>Subsets of the Redis and Kafka protocols, and no authentication or TLS on any network interface.</li>
+</ul>
+<h4>What comes next</h4>
+<p>The next work includes shared flushes for durable commits, expiry, approximate vector indexing, newer Kafka records, and larger-scale measurements. Beyond these, the direction is a multi-node data platform: replication with election and fencing, and logs spread across machines.</p>
+</section>
+
+<section class="prose" id="availability">
+<h3>Availability</h3>
+<p>Crow is open source at <a href="https://github.com/agncrow/crow">github.com/agncrow/crow</a>.</p>
+<p>Magpie is a Crow package at <a href="https://github.com/agncrow/magpie">github.com/agncrow/magpie</a>, source-available under the Business Source License 1.1. Its published terms allow development, testing, non-commercial use, and commercial production on one machine per application. Each version becomes Apache-2.0 four years after publication.</p>
+<div class="closing">
+<p>Magpie's organizing idea is one ordered set of writes that applications can read in several ways. The engine makes that idea concrete through a shared file format, explicit durability choices, and retention policies the program controls.</p>
+</div>
+</section>
+</main>
+</body>
+</html>
