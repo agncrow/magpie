@@ -35,8 +35,8 @@ so (Magpie's keys and time column, declared once).
 
 `append[g, f]` appends feature rows — the entity's columns, the time
 column and the features — through Magpie's `put`: visible to `online`
-at once, durable within ten milliseconds (`sync` of the log, for
-sooner). A `_pos` column a read left on the rows is dropped. It answers
+at once, durable at the log's next flush (`sync` of the log, for at
+once). A `_pos` column a read left on the rows is dropped. It answers
 the first position the rows took.
 
 ## Two reads, one log

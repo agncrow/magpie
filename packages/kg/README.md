@@ -23,7 +23,8 @@ use kg
 
 ## The logs
 
-A graph lives under a root directory as three Magpie logs. `nodes` is
+A graph lives under a root directory as three Magpie logs (a fourth,
+`vectors`, once a node is embedded: see `embed`). `nodes` is
 keyed by `id` and holds `label`, `props` (JSON text), `gone` and `at`;
 `edges` is keyed by `src`, `rel`, `dst` and holds `weight`, `source`
 (provenance: where the fact came from), `gone` and `at`; `back` holds
@@ -41,8 +42,8 @@ answers its position; `retire[root, id, at = -1]` writes its tombstone.
 edge forward and back and answers its position in `edges`;
 `unlink[root, src, rel, dst, at = -1]` its tombstone in both. `at` is
 the moment the fact holds from; -1 is now. A write is a Magpie `put`:
-visible to the process at once, durable within ten milliseconds (or at
-`sync[dir]` of the log).
+visible to the process at once, durable at the log's next flush (or at
+once with `sync[dir]` of the log).
 
 `rule[root, f, at = -1]` applies a rule: `f` takes the edges as a frame
 and answers a frame of `src`, `rel`, `dst` — the edges it derives — which
