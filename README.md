@@ -66,8 +66,9 @@ and is skipped without it.
 
 Magpie needs a crow from 2026-10-30 or later: one in which a package may
 import `sys` and `memory`, a package linked into `crow_modules` keeps its
-name in every file it brings, and the served harness serves an app with
-its linked packages. Crow's own gate runs this suite before a change to
+name in every file it brings, `crow install` installs a package without
+its own `crow_modules/` (kg and features keep links to magpie there), and
+the served harness serves an app with its linked packages. Crow's own gate runs this suite before a change to
 the compiler lands, so a change that breaks Magpie is seen there.
 
 ## History and license
