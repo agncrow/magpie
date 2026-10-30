@@ -381,8 +381,8 @@ false
 
 `summary` is the aggregate pushed below the reader: each row group is
 pruned by its statistics, decoded for the columns named alone, filtered
-by the predicates, grouped and reduced on its own core, and the partials
-are combined, so the rows are never held as one frame. It answers what
+by the predicates, grouped and reduced one group at a time, and the
+partials are combined, so the rows are never held as one frame. It answers what
 `group` answers over `scan` of the same rows. `prior` is the as-of join
 over the log: for each label's keys and moment, the newest row at or
 before it, from the key's run; with `upto`, as of that position, so a
