@@ -1,0 +1,2 @@
+name = 'measure'
+deps = map[vectors = 'github.com/agncrow/crow/packages/vectors@main', kg = '../../packages/kg', magpie = '../../packages/magpie']

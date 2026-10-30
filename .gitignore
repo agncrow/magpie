@@ -1,0 +1,16 @@
+# what crow builds and keeps beside a program
+.crow_build/
+target/
+**/.crow/
+# the logs and data a program run here writes
+*.csv
+*.txt
+*.json
+!packages/features/reference/data/*.csv
+!packages/features/reference/expected/*.csv
+examples/magpie/orders/
+# the OS and editors
+.DS_Store
+*.swp
+*~
+__pycache__/
