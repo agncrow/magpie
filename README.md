@@ -75,4 +75,11 @@ the compiler lands, so a change that breaks Magpie is seen there.
 
 Magpie was built inside the crow repository — as standard modules under
 `src/modules/` until 2026-10-29, then as `packages/magpie` — and its
-history up to the move is crow's. Its license is not decided yet.
+history up to the move is crow's.
+
+Magpie is source-available under the [Business Source License 1.1](LICENSE)
+(in plain words: [LICENSING.md](LICENSING.md)). It is free for development
+and testing, for non-commercial use, and for commercial production on one
+machine per application. Clusters, standbys, shards and hosted services
+need a commercial license (vkotinaga@gmail.com). Each version becomes
+Apache-2.0 four years after it is published.
