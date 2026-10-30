@@ -1,12 +1,13 @@
 # Magpie's measures, on small sets
 
-The programs behind "Measured 2026-10-27, on small sets" in
-docs/magpie-design.md and the article's measured results. Each prints
-its own numbers; run them one at a time on a quiet machine, interpreted
-(`crow run -i`; the kernels do the work either way). Every number is end
-to end in the program, from the call to the value in hand, with no
-result serialization: the first run cold, then the median of the warm
-runs where a program says `REPS`.
+The programs behind the measured results of Magpie's article and of
+docs/magpie-in-crow.md (4.2). Each prints its own numbers. Magpie is
+Crow code, so the compiled program is the measure: build each with
+`crow build` and run the binary, one at a time, on a quiet machine
+(`crow run -i` runs the same program interpreted, and slower). Every
+number is end to end in the program, from the call to the value in
+hand, with no result serialization: the first run cold where a program
+says so, then the median of the warm runs where it says `REPS`.
 
 | Program | What it measures | Needs |
 |---|---|---|
@@ -25,21 +26,26 @@ fetches into `crow_modules/` once (the crowfile names it), before
 `vectors.co` runs:
 
 ```
-crow run -i copy_month.co
-N=20000 W=64 crow run -i vectors.co
-N=100000 W=64 crow run -i vectors.co
-N=5000 D=10 crow run -i graph.co
-N=100000 crow run -i words.co
-N=200000 C=100 crow run -i wide.co
+crow install
+for p in vectors graph words wide seq copy_month finch; do crow build $p.co; done
+./copy_month
+N=20000 W=64 ./vectors
+N=100000 W=64 ./vectors
+N=5000 D=10 ./graph
+N=100000 ./words
+N=200000 C=100 ./wide
 redis-server --port 6399 --save '' --appendonly no &
-N=2000 crow run -i seq.co
+N=2000 ./seq
 redis-benchmark -p 6399 -t set,get -n 2000 -c 1 -q
-crow run -i finch.co
+./finch
 ```
 
-The numbers recorded on 2026-10-27 were taken on an Apple M4 Max with
-64 GB, crow 0.7.0 at the commit that added this directory, Postgres 14
-and Redis 8 from Homebrew, ClickHouse as finch runs it (143,000 active
-parts). Small sets teach mechanisms, not rankings: the sizes are a few
-hundred thousand rows, where every structure fits in memory, and no
-number here says what a billion rows would.
+The recorded runs: 2026-10-27 interpreted, while Magpie's byte-level
+work ran in Rust kernels inside crow's runtime, since rewritten in Crow
+(docs/magpie-design.md, "Measured 2026-10-27"); 2026-10-29 and
+2026-10-30 compiled (docs/magpie-in-crow.md 4.2; the article). An Apple
+M4 Max with 64 GB, Postgres 14.20 and Redis 8.2 from Homebrew,
+ClickHouse 25.7 as finch runs it (143,000 active parts). Small sets
+teach mechanisms, not rankings: the sizes are a few hundred thousand
+rows, where every structure fits in memory, and no number here says
+what a billion rows would.

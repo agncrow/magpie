@@ -118,5 +118,12 @@ each label, a missing cell where no row precedes. `main.co`'s test
 blocks: one write read as both stores, a backfill over windows and a
 stream over the tail answering the same rows, and the registry;
 `example.co` runs interpreted and compiled under `./test.sh` with one output.
-Embeddings as features wait on the column of vectors (a language
-feature, docs/magpie-design.md).
+
+## License
+
+Business Source License 1.1: the `LICENSE` beside this file, in plain
+words in the repository's `LICENSING.md`. Free for development, testing
+and non-commercial use, and for commercial production on one machine per
+application; clusters and hosted services need a commercial license
+(vkotinaga@gmail.com). Each version becomes Apache-2.0 four years after
+it is published.

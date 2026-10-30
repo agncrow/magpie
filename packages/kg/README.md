@@ -106,6 +106,13 @@ who = kg.match['people', ['?x', '?x'], ['knows', 'works_at'], ['?y', 'acme']]
 a position, a node's history, a walk and a path against a graph drawn
 by hand, the patterns' joins, a rule's edges, a subgraph, and the edges
 as of a moment; `example.co` runs interpreted and compiled under `./test.sh` with
-one output. The vector index of docs/magpie-design.md's phase 10 waits
-on the column of vectors (a language feature); until then an entity is
-found by `search` over its text, and the edges expand it.
+one output.
+
+## License
+
+Business Source License 1.1: the `LICENSE` beside this file, in plain
+words in the repository's `LICENSING.md`. Free for development, testing
+and non-commercial use, and for commercial production on one machine per
+application; clusters and hosted services need a commercial license
+(vkotinaga@gmail.com). Each version becomes Apache-2.0 four years after
+it is published.

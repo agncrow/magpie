@@ -263,10 +263,12 @@ gone = rm['ex_search']
 0
 ```
 
-A `texts` column is indexed as it is written: each file's head holds a
-filter of its words, and `search` reads only the files whose filters
-admit a word asked, scoring the rows as Lucene scores them (BM25) over
-the whole log as one corpus.
+A batch is read whole when it is searched; the merge indexes every text
+column of the segments it writes (per row group, a filter over its
+words, a sorted dictionary and each word's postings), and a search reads
+a merged group through them. Either way the rows are scored as Lucene
+scores them (BM25), over the whole log as one corpus, and the ranking is
+the same.
 
 ### Search's forms: a phrase, a prefix, a fuzzy word, a snippet
 
@@ -568,3 +570,12 @@ entry's id its position, `XRANGE` and `XREAD` reads by position. The
 block above runs the door's loop three rounds with nobody connecting; a
 client's session — `redis-cli -p 6379`, or any Redis library — is
 tests/doors.py, driven in both modes.
+
+## License
+
+Business Source License 1.1: the `LICENSE` beside this file, in plain
+words in the repository's `LICENSING.md`. Free for development, testing
+and non-commercial use, and for commercial production on one machine per
+application; clusters and hosted services need a commercial license
+(vkotinaga@gmail.com). Each version becomes Apache-2.0 four years after
+it is published.
