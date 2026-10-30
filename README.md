@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/magpie.svg" width="128" alt="Magpie"></p>
+
 # Magpie
 
 The log as a directory of batch files, written in Crow: each commit one
@@ -11,6 +13,9 @@ segments; a second node that follows the log by its files; and doors that
 let Kafka's and Redis's clients in. Every answer is the same in
 `crow run -i` and `crow run`.
 
+**Introducing Magpie**, with diagrams of how it works and its first
+measurements: [agncrow.github.io/magpie](https://agncrow.github.io/magpie/).
+
 | Package | What it is |
 |---|---|
 | [`packages/magpie`](packages/magpie/README.md) | the log, its parts and its two doors — the tour in its README, every function in [REFERENCE.md](packages/magpie/REFERENCE.md), each part at work in [PARTS.md](packages/magpie/PARTS.md) |
@@ -20,7 +25,7 @@ let Kafka's and Redis's clients in. Every answer is the same in
 A program installs a package as any dependency and calls it qualified:
 
 ```
-deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.0']
+deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.1']
 ```
 
 ```
@@ -32,8 +37,9 @@ log[magpie.latest['orders'].qty]
 ```
 
 kg and features name magpie in their crowfiles, so `crow install` puts it
-beside them. The repository is private for now: `crow install` fetches it
-with the credentials git holds for github.com.
+beside them. Magpie needs a crow newer than its latest release (0.7.0):
+until the next release, build crow from a checkout of its main branch
+with `./install.sh --source`.
 
 ## What else is here
 
