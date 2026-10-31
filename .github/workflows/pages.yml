@@ -1,22 +1,26 @@
-# The article introducing Magpie (site/index.html), published on GitHub
-# Pages (https://agncrow.github.io/magpie/) on every push to main that
-# touches it or the icons.
+# The article introducing Magpie (site/index.html) and the Magpie book
+# (docs/book, rendered by docs/book/site.co), published on GitHub Pages —
+# the article at https://agncrow.github.io/magpie/, the book under it at
+# /book/ — on every push to main that touches either or the icons.
 #
 # No step runs a JavaScript action, so the workflow needs no Node.js: the
-# commit is fetched with git and the page pushed with its icons as the one
-# commit of the `gh-pages` branch, which the repository's Pages serve
-# (Settings → Pages → Deploy from a branch: gh-pages, /), as crow's book is.
+# commit is fetched with git, the book rendered by the released crow (the
+# interpreter, so no Rust), and the site pushed as the one commit of the
+# `gh-pages` branch, which the repository's Pages serve (Settings → Pages →
+# Deploy from a branch: gh-pages, /), as crow's book is.
 name: Pages
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'assets/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'assets/**', 'docs/**', 'packages/**/*.md', 'tests/measure/README.md', 'LICENSING.md', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
   group: pages
   cancel-in-progress: true
+env:
+  CROW_VERSION: "0.8.0"
 jobs:
   publish:
     runs-on: ubuntu-22.04
@@ -29,12 +33,24 @@ jobs:
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')" fetch -q --depth 1 --no-tags origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      - name: The page and its icons
+      - name: Crow, the release that renders the book
         run: |
-          mkdir -p out
+          f="crow-$CROW_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSLO "https://github.com/agncrow/crow/releases/download/v$CROW_VERSION/$f"
+          curl -fsSLO "https://github.com/agncrow/crow/releases/download/v$CROW_VERSION/$f.sha256"
+          sha256sum -c "$f.sha256"
+          mkdir -p "$RUNNER_TEMP/crow" && tar -xzf "$f" -C "$RUNNER_TEMP/crow" && rm "$f" "$f.sha256"
+          "$RUNNER_TEMP/crow/crow" --version
+      - name: The article, the book and their icons
+        run: |
+          "$RUNNER_TEMP/crow/crow" run -i docs/book/site.co
+          mkdir -p out/book
           cp site/index.html out/
           cp assets/magpie.svg assets/favicon.ico assets/apple-touch-icon.png assets/magpie-social.png out/
-          test -s out/index.html
+          cp -R docs/book/crow-site/. out/book/
+          cp assets/favicon.ico assets/apple-touch-icon.png out/book/
+          test -s out/index.html && test -s out/book/index.html && test -s out/book/batches.html
+          n=$(find out/book -name '*.html' | wc -l); echo "$n book pages"; test "$n" -ge 25
       # the site as the one commit of gh-pages (no history kept: each push
       # is the whole site), served as it is written (.nojekyll)
       - name: Publish the site to the gh-pages branch
