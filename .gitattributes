@@ -1,0 +1,7 @@
+# GitHub counts a repository's languages with Linguist, which knows no
+# Crow: the .co files, all of Magpie's code, are not counted. The article
+# page and the test scripts are left out too, so GitHub names no language
+# rather than call Magpie an HTML or Python project.
+site/** -linguist-detectable
+*.py -linguist-detectable
+*.sh -linguist-detectable
