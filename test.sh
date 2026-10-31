@@ -1,6 +1,7 @@
 #!/bin/bash
 # Magpie's whole suite against a crow binary, from this repository's root:
-# each package's test blocks and its example in both modes, the parity
+# each package's test blocks and its example in both modes, the book's
+# programs in both modes and its layout, the parity
 # programs (interpreted against compiled), the example app served in both
 # modes, and the doors and the log driven from outside (tests/doors.py).
 # Usage: ./test.sh [path to crow]   (the crow on the PATH by default)
@@ -17,6 +18,8 @@ step() {
     echo
 }
 step packages "$CROW" test --packages
+step book "$CROW" test --book
+step "book layout" "$CROW" test docs/book/site.co
 step parity "$CROW" test --parity
 step served "$CROW" test --served
 step doors python3 tests/doors.py "$CROW"

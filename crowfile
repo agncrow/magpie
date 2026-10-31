@@ -1,0 +1,5 @@
+--- The repository's root: the book's programs (crow test --book) and the
+--- parity programs reach the package through crow_modules/magpie, a link
+--- to packages/magpie, as a program that installs it does.
+name = 'magpie_repository'
+deps = map[magpie = 'packages/magpie']

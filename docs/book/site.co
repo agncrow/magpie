@@ -1,0 +1,113 @@
+--- The Magpie Book, rendered by Crow as Crow's own book is: Markdown
+--- chapters in (docs/book/src), a static site out (docs/book/crow-site, the
+--- folder `crow book` serves), published under the article at
+--- agncrow.github.io/magpie/book/ by .github/workflows/pages.yml. Run from
+--- the repository's root:
+---
+---   crow run -i docs/book/site.co    --- writes every page
+---   crow test docs/book/site.co      --- the page layout, no browser
+---   crow test --book                 --- every block, in both modes
+---   crow book                        --- served, every block runnable
+use web, ui, doc
+
+src = 'docs/book/src/'
+out = 'docs/book/crow-site/'
+
+--- One page: a top bar with search, the menu on the left, the chapter
+--- and its previous/next links on the right. Below tablet width the menu
+--- steps aside and the top bar's button brings it back as an overlay.
+--- `up` takes links back to the book's root, whose parent is the article;
+--- `version` is the mark's, for its address (a view reads no file, so the
+--- caller works it out).
+view chapter[title, body, nav, pages, up, version]
+    return stack[
+        row[
+            button['☰', class = 'nav-toggle', title = 'menu'],
+            img[src = '`up`magpie.svg?v=`version`', alt = '', width = 28, height = 28],
+            a['The Magpie Book', href = '`up`index.html', class = 'title'],
+            row[
+                input[class = 'doc-search', type = 'search', placeholder = 'Search  /', hidden_below = 'phone'],
+                a['Article', href = '`up`../index.html'],
+                a['GitHub', href = 'https://github.com/agncrow/magpie'],
+                gap = 'm', align = 'center', class = 'links', hidden_below = 'phone'
+            ],
+            gap = 'm', align = 'center', justify = 'between', class = 'doc-top'
+        ],
+        div[class = 'doc-results', hidden = 'hidden'],
+        row[
+            stack[nav, width = '272px', hidden_below = 'tablet', class = 'doc-side'],
+            stack[body, pages, fill = 'true', class = 'doc', pad = 'xl'],
+            align = 'start'
+        ]
+    ]
+
+--- A page for the harness: a chapter with a runnable block and the output
+--- the book expects of it, written here since a view reads no file.
+view sample[]
+    toc = doc.chapters['# Sample\n\n- [One](one.md)\n  - [Two](two.md)']
+    md = '# A log\n\nA block to run, and what it prints.\n\n\`\`\`crow\nlog[\'hello, log\']\n\`\`\`\n\n\`\`\`text\nhello, log\n\`\`\`\n'
+    return chapter['One', doc.markdown[md], doc.menu[toc, 'one.md'], doc.pager[toc, 'one.md'], '', '']
+
+test layout[]
+    s = app[sample, width = 1280]
+    top = box[s, '.doc-top'][0]
+    nav_box = box[s, '.doc-nav'][0]
+    text_box = box[s, '.doc'][0]
+    assert[top.y lt nav_box.y]                     --- the bar is above everything
+    assert[nav_box.x lt text_box.x]                --- the menu sits left of the text
+    assert[len[box[s, '.doc-top .nav-toggle']] eq 1]
+    assert[len[box[s, '.doc-top .doc-search']] eq 1]
+    assert[len[box[s, '.doc-results']] eq 0]     --- search results take no space until typed
+    pager_box = box[s, '.doc-pager'][0]
+    last = box[s, '.doc pre']
+    assert[pager_box.y gt last[len[last] - 1].y]   --- previous/next after the chapter
+    assert[len[elements[s, '.doc h1']] eq 1]
+    assert[fits[s, 1280]]
+    phone = app[sample, width = 390]
+    assert[len[box[phone, '.doc-nav']] eq 0]      --- and steps aside on a phone
+    assert[len[box[phone, '.nav-toggle']] eq 1]   --- where the bar's button brings it back
+    assert[fits[phone, 390]]
+
+--- the mark's version: the first eight hex digits of its bytes' hash, so
+--- an address that carries it changes when the mark does (a test block
+--- sees declarations only, so this is a function, not a top-level name)
+fn mark_version[]
+    return slice[hash[read['assets/magpie.svg'], 'sha256'], 0, 8]
+
+--- a page with the favicon in its head: the mark, reached from where the
+--- page sits, its address carrying a version from the mark's own bytes, so
+--- a browser that cached the old icon fetches a changed one
+fn with_icon[written, up, version]
+    tag = replace[replace['<head><link rel="icon" type="image/svg+xml" href="UPmagpie.svg?v=V"><link rel="icon" href="UPfavicon.ico?v=V" sizes="32x32"><link rel="apple-touch-icon" href="UPapple-touch-icon.png?v=V">', 'UP', up], 'V', version]
+    return replace[written, '<head>', tag]
+
+toc = doc.chapters[read['`src`SUMMARY.md']]
+version = mark_version[]
+--- (the site directory first: on a fresh checkout nothing has made it, and
+--- a page written into a directory that is not there is a failed write)
+mkdir[out]
+for i in range[len[toc]]
+    path = toc.path[i]
+    title = toc.title[i]
+    up = ''
+    if '/' in path
+        up = '../'
+        parts = split[path, '/']
+        folder = parts[0]
+        mkdir['`out``folder`']
+    doc_page = with_icon[doc.document['`title` · Magpie', chapter[title, doc.markdown[read['`src``path`']], doc.menu[toc, path], doc.pager[toc, path], up, version]], up, version]
+    html_path = replace[path, '.md', '.html']
+    write['`out``html_path`', doc_page]
+--- the front door is the first chapter
+first = toc.path[0]
+write['`out`index.html', with_icon[doc.document['The Magpie Book', chapter[toc.title[0], doc.markdown[read['`src``first`']], doc.menu[toc, first], doc.pager[toc, first], '', version]], '', version]]
+--- the mark, beside the pages, for the favicon and the top bar
+write['`out`magpie.svg', read['assets/magpie.svg']]
+
+--- the search index: every chapter's title, page, and words
+entries = for i in range[len[toc]]
+    path = toc.path[i]
+    map[t = toc.title[i], p = replace[path, '.md', '.html'], x = doc.plain[read['`src``path`']]]
+write['`out`search.json', encode[entries]]
+n = len[toc]
+log['`n` pages written to `out`']

@@ -16,9 +16,13 @@ let Kafka's and Redis's clients in. Every answer is the same in
 **Introducing Magpie**, with diagrams of how it works and its first
 measurements: [agncrow.github.io/magpie](https://agncrow.github.io/magpie/).
 
+**The Magpie book**, the manual — every write and read as a program with
+what it prints, the protocols, the packages built on Magpie and the
+design: [agncrow.github.io/magpie/book](https://agncrow.github.io/magpie/book/).
+
 | Package | What it is |
 |---|---|
-| [`packages/magpie`](packages/magpie/README.md) | the log, its parts and its two doors — the tour in its README, every function in [REFERENCE.md](packages/magpie/REFERENCE.md), each part at work in [PARTS.md](packages/magpie/PARTS.md) |
+| [`packages/magpie`](packages/magpie/README.md) | the log, its parts and its two doors — the tour in [the book](https://agncrow.github.io/magpie/book/), every function in [REFERENCE.md](packages/magpie/REFERENCE.md), each part at work in [PARTS.md](packages/magpie/PARTS.md) |
 | [`packages/kg`](packages/kg/README.md) | a knowledge graph whose nodes and edges are Magpie logs |
 | [`packages/features`](packages/features/README.md) | a feature store over Magpie, held to pandas's `merge_asof` |
 
@@ -37,9 +41,7 @@ log[magpie.latest['orders'].qty]
 ```
 
 kg and features name magpie in their crowfiles, so `crow install` puts it
-beside them. Magpie needs a crow newer than its latest release (0.7.0):
-until the next release, build crow from a checkout of its main branch
-with `./install.sh --source`.
+beside them. Magpie needs Crow 0.8.0 or later.
 
 ## What else is here
 
@@ -53,6 +55,10 @@ with `./install.sh --source`.
   in both modes; `tests/measure`: the programs behind Magpie's measured
   numbers, run by hand (their README says how); `tests/reference.py`: the
   BM25 scores a search is held to.
+- `docs/book`: the book — its chapters in `src` (`SUMMARY.md` the
+  contents) and `site.co`, which renders them as Crow renders its own
+  book; `crow book` serves it with every program runnable, and the Pages
+  workflow publishes it beside the article (`site/index.html`).
 - `docs`: the design ([magpie-design.md](docs/magpie-design.md)) and the
   port of its Rust kernels to Crow ([magpie-in-crow.md](docs/magpie-in-crow.md)).
 
@@ -63,14 +69,15 @@ with `./install.sh --source`.
 ```
 
 runs `crow test --packages` (each package's test blocks, and its
-`example.co` in both modes), `crow test --parity`, `crow test --served`
+`example.co` in both modes), `crow test --book` (every program of the
+book, in both modes) and the book's layout, `crow test --parity`, `crow test --served`
 (the example app, its pages compared across the modes) and
 `tests/doors.py` — the crow on the PATH unless a binary is named. The
 Kafka door's run needs the pure-Python client (kafka-python 3.0.11),
 looked for as `CROW_KAFKA_PYTHON` or in the Python running the script,
 and is skipped without it.
 
-Magpie needs a crow from 2026-10-30 or later: one in which a package may
+Magpie needs Crow 0.8.0 or later: one in which a package may
 import `sys` and `memory`, a package linked into `crow_modules` keeps its
 name in every file it brings, `crow install` installs a package without
 its own `crow_modules/` (kg and features keep links to magpie there), and

@@ -1,6 +1,6 @@
 # Licensing
 
-Magpie is source-available under the [Business Source License 1.1](LICENSE)
+Magpie is source-available under the [Business Source License 1.1](https://github.com/agncrow/magpie/blob/main/LICENSE)
 (BSL), with an additional use grant. This page says what that means in
 plain words; where the two differ, the license decides.
 
@@ -49,7 +49,7 @@ years after it is published — the BSL's change date.
 ## Contributions
 
 Outside contributions are not accepted yet: a contributor license
-agreement will come first (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+agreement will come first (see [CONTRIBUTING.md](https://github.com/agncrow/magpie/blob/main/CONTRIBUTING.md)).
 
 ## Commercial licenses
 

@@ -8,7 +8,7 @@ manifest, the merge, the executor, the nearest rows, the search, the
 Kafka wire's bytes and the sequencer. Each block below is a program that
 depends on the package, with what it prints; `example.co` runs every one
 in both modes. The functions are listed in [REFERENCE.md](REFERENCE.md);
-the log they make up is the tour in [README.md](README.md).
+the log they make up is the tour in [the Magpie book](https://agncrow.github.io/magpie/book/).
 
 ## Magpie's codec, in Crow
 

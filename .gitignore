@@ -14,3 +14,5 @@ examples/magpie/orders/
 *.swp
 *~
 __pycache__/
+# the book as a site, rendered by docs/book/site.co
+docs/book/crow-site/

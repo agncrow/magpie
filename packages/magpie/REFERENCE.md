@@ -1,7 +1,7 @@
 # Magpie reference
 
 Every function of the package, its parts and its two doors, with the
-design notes that decided them. The tour is [README.md](README.md); the
+design notes that decided them. The tour is [the Magpie book](https://agncrow.github.io/magpie/book/); the
 functions here are called qualified (`magpie.latest[…]`, `kafka.serve[…]`).
 
 ## The log: `use magpie`

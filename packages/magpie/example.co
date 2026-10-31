@@ -1,4 +1,4 @@
---- Magpie at work: each section of the package's tour (README.md) in
+--- Magpie at work: each section of the book's tour (docs/book) in
 --- turn, then each of its parts (PARTS.md) — each a program of its own
 --- on its page, here a function of its own — every log under a directory
 --- of its own and removed after, with the same answers in both modes (`./test.sh`
