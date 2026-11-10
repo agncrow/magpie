@@ -29,7 +29,7 @@ design: [agncrow.github.io/magpie/book](https://agncrow.github.io/magpie/book/).
 A program installs a package as any dependency and calls it qualified:
 
 ```
-deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.1']
+deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.2']
 ```
 
 ```

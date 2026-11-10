@@ -4,7 +4,7 @@ Magpie is a Crow package. A program names it among its dependencies, in
 its crowfile:
 
 ```
-deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.1']
+deps = map[magpie = 'github.com/agncrow/magpie/packages/magpie@v0.1.2']
 ```
 
 `crow install` checks the package out into `crow_modules/magpie`, and
