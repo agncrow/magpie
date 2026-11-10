@@ -76,19 +76,10 @@ fn _offered[best, h, k]
         out = push[out, h]
     return out
 
---- the files' columns and a `score`, with no rows
-fn _empty_scored[paths]
-    if len[paths] eq 0
-        f = frame.new[]
-        f.score = floats_column[[], sys.bytes[0]]
-        return f
-    r = fileformat.opened[paths[0]]
-    if not r.ok
-        return error[r.reason, 'magpie']
-    every = fileformat.wanted[r, slice[['x'], 0, 0]]
-    if not every.ok
-        return error[every.reason, 'magpie']
-    f = fileformat.empty_of[r, every]
+--- the files' columns (`shape`, as `sequencer.shape_of` joins them) and a
+--- `score`, with no rows
+fn _empty_scored[shape]
+    f = fileformat.empty_frame[shape]
     f.score = floats_column[[], sys.bytes[0]]
     return f
 
@@ -110,8 +101,14 @@ fn nearest_rows[paths, column, query, k]
         return error['batch: nearest answers at most k rows, and k is `k`', 'magpie']
     if len[query] eq 0
         return error['batch: a query vector holds one number or more', 'magpie']
-    if len[paths] eq 0 or k eq 0
-        return _empty_scored[paths]
+    if len[paths] eq 0
+        return _empty_scored[fileformat.no_shape[]]
+    --- (the answer's columns: every file's, whichever rows are nearest)
+    shape = sequencer.shape_of[paths]
+    if not shape.ok
+        return error[shape.reason, 'magpie']
+    if k eq 0
+        return _empty_scored[shape]
     --- (the query's numbers in order, whatever holds them: a list, a
     --- vector, or a tensor whose rank the caller's types do not say)
     asked = []
@@ -121,41 +118,55 @@ fn nearest_rows[paths, column, query, k]
     best = []
     readers = map[]
     pending = map[]
+    holding = false
     for fi in range[len[paths]]
         p = paths[fi]
         if '/.pending' in p
             --- (the sequencer's pending rows, read through the kernel until
-            --- the sequencer is Crow's: scored as one group)
+            --- the sequencer is Crow's: scored as one group; rows without
+            --- the column, or none of its cells, have nothing to score)
             df = sequencer.pending_at[p]
             if not df.ok
                 return error[df.reason, 'magpie']
             pending = set[pending, fi, df]
-            if column not in df.columns
-                return error['batch: \'`p`\' holds no column \'`column`\'', 'magpie']
-            col = df.`column`
-            if cell_kind[col] ne 'vector'
-                return error['batch: column \'`column`\' holds `cell_kind[col]`, not vectors', 'magpie']
-            more = _scored[best, col, ints_of[df._pos, 0, len[df]], uq, fi, 0, k, column]
-            if not more.ok
-                return error[more.reason, 'magpie']
-            best = more
+            if column in df.columns
+                holding = true
+                col = df.`column`
+                if cell_kind[col] ne 'vector'
+                    return error['batch: column \'`column`\' holds `cell_kind[col]`, not vectors', 'magpie']
+                if fileformat.holds_cells[col]
+                    more = _scored[best, col, ints_of[df._pos, 0, len[df]], uq, fi, 0, k, column]
+                    if not more.ok
+                        return error[more.reason, 'magpie']
+                    best = more
         else
             r = fileformat.opened[p]
             if not r.ok
                 return error[r.reason, 'magpie']
             readers = set[readers, fi, r]
-            more = _file_scored[best, r, p, column, uq, fi, k]
-            if not more.ok
-                return error[more.reason, 'magpie']
-            best = more
+            --- (a file written before the column was: nothing to score)
+            if _column_at[r, column] gte 0
+                holding = true
+                more = _file_scored[best, r, p, column, uq, fi, k]
+                if not more.ok
+                    return error[more.reason, 'magpie']
+                best = more
+    if not holding
+        return error['batch: column \'`column`\' is in none of the files read', 'magpie']
     if len[best] eq 0
-        return _empty_scored[paths]
+        return _empty_scored[shape]
+    --- (the rows in the files' columns: a file written before the log's
+    --- columns grew is missing the newer ones' cells)
     rows = []
+    rows = push[rows, fileformat.empty_frame[shape]]
+    labels = slice[['x'], 0, 0]
+    labels = push[labels, 'the files read']
     scores = []
     for h in best
         if h.file in pending
             df = pending[h.file]
             rows = push[rows, frame.head[frame.tail[df, len[df] - h.row], 1]]
+            labels = push[labels, paths[h.file]]
         else
             r = readers[h.file]
             every = fileformat.wanted[r, slice[['x'], 0, 0]]
@@ -165,8 +176,11 @@ fn nearest_rows[paths, column, query, k]
             if not g.ok
                 return error[g.reason, 'magpie']
             rows = push[rows, frame.head[frame.tail[g, len[g] - h.row], 1]]
+            labels = push[labels, paths[h.file]]
         scores = push[scores, h.score]
-    whole = frame.stack[rows]
+    whole = fileformat.stacked[rows, labels]
+    if not whole.ok
+        return error[whole.reason, 'magpie']
     whole.score = floats_column[scores, sys.bytes[0]]
     return whole
 

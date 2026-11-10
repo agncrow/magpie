@@ -564,9 +564,10 @@ fn latest[dir, upto = -1, columns = [], lo = '', hi = '', equal = []]
     newest = sort[rows, '_pos', desc = true]
     return sort[frame.unique[newest, fixed], '_pos']
 
---- the rows of several files holding the values
-fn _found[paths, on, equal, columns]
-    return _find_in[paths, on, equal, columns]
+--- the rows of several files holding the values (`musts` the columns
+--- some file read must hold)
+fn _found[paths, on, equal, columns, musts]
+    return _find_in[paths, on, equal, columns, musts]
 
 --- `lookup[dir, on, equal, columns = []]`: the rows whose `on`
 --- columns hold the values `equal`, every pair at once, each value written as
@@ -598,13 +599,13 @@ fn lookup[dir, on, equal, columns = []]
     paths = _reaching[b, -1, -1]
     if len[paths] eq 0
         return frame.new[]
-    hit = _found[paths, on, equal, columns]
+    hit = _found[paths, on, equal, columns, on]
     if not hit.ok and _gone[hit.reason]
         again = batches[dir]
         if not again.ok
             return again
         paths = _reaching[again, -1, -1]
-        hit = _found[paths, on, equal, columns]
+        hit = _found[paths, on, equal, columns, on]
     if not hit.ok
         return error[hit.reason, 'magpie']
     return hit
@@ -755,7 +756,8 @@ fn commit[dir, f, seen = -1, columns = [], equal = []]
         for i in range[len[b]]
             if b.last[i] gt seen and (b.form[i] eq 'batch' or b.form[i] eq 'segment' or b.form[i] eq 'pending')
                 for j in range[len[columns]]
-                    held = _found[[b.path[i]], [columns[j]], [equal[j]], ['_pos']]
+                    --- (a file without the column holds none of its values)
+                    held = _found[[b.path[i]], [columns[j]], [equal[j]], ['_pos'], slice[['x'], 0, 0]]
                     if not held.ok
                         return error[held.reason, 'magpie']
                     hit = held[held._pos gt seen]
@@ -1922,15 +1924,20 @@ fn _within[col, low, high]
             begin = stop
     return out
 
---- the frame with the columns named, in that order (every column when
---- none is named); a name it lacks is refused
-fn _only[df, names, path]
+--- the frame with the columns named that it holds, in that order (every
+--- column when none is named): a file written before the log's columns
+--- grew lacks the newer ones, and its rows are missing their cells once
+--- the files' parts are stacked (`_gathered`)
+fn _only[df, names]
     if len[names] eq 0
         return df
+    held = slice[['x'], 0, 0]
     for w in names
-        if w not in df.columns
-            return error['batch: \'`path`\' holds no column \'`w`\'', 'magpie']
-    return frame.select[df, names]
+        if w in df.columns
+            held = push[held, w]
+    if held eq df.columns
+        return df
+    return frame.select[df, held]
 
 --- the names a read by position must hold: the ones wanted and `_pos`
 fn _with_position[names]
@@ -1938,21 +1945,28 @@ fn _with_position[names]
         return names
     return push[names, '_pos']
 
---- the parts of several files stacked, in position order, `_pos` dropped
---- where it was not asked for
-fn _gathered[parts, names]
+--- the parts of several files stacked, in position order, with the
+--- columns named in that order (every column when none is), `_pos`
+--- dropped where it was not asked for: parts of other columns — files
+--- written before and after the log's columns grew — stacked in the
+--- columns they hold together, each missing the cells it lacks, and an
+--- int column beside a float one widened (`fileformat.stacked`, each part
+--- named by its file's path, `labels`). An error value where a column
+--- holds two kinds in two files (an older Magpie wrote such logs),
+--- naming the column and the files, or where none of the files holds a
+--- column named or one of `musts`
+fn _gathered[parts, names, labels, musts]
     if len[parts] eq 0
         return frame.new[]
-    nonempty = []
-    for p in parts
-        if len[p] gt 0
-            nonempty = push[nonempty, p]
-    whole = parts[0]
-    if len[nonempty] gt 0
-        whole = frame.stack[nonempty]
+    whole = fileformat.stacked[parts, labels]
+    if not whole.ok
+        return error[whole.reason, 'magpie']
+    for w in concat[names, musts]
+        if w not in whole.columns
+            return error['batch: column \'`w`\' is in none of the files read', 'magpie']
     if len[whole] gt 1 and '_pos' in whole.columns
         whole = sort[whole, '_pos']
-    if len[names] eq 0 or '_pos' in names
+    if len[names] eq 0 or whole.columns eq names
         return whole
     return frame.select[whole, names]
 
@@ -1961,18 +1975,14 @@ fn _gathered[parts, names]
 fn _pending_path[p]
     return '/.pending' in p
 
---- the pending rows a path names, with the columns asked in that order
---- (every column where none is), as a file's read hands them
+--- the pending rows a path names, with the columns asked that they hold,
+--- in that order (every column where none is), as a file's read hands
+--- them
 fn _pending_read[p, names]
     df = sequencer.pending_at[p]
     if not df.ok
         return error[df.reason, 'magpie']
-    if len[names] eq 0
-        return df
-    for c in names
-        if c not in df.columns
-            return error['batch: \'`p`\' holds no column \'`c`\'', 'magpie']
-    return frame.select[df, names]
+    return _only[df, names]
 
 --- the rows of a frame where every column holds its value
 fn _held_rows[df, columns, wants]
@@ -1988,9 +1998,11 @@ fn _held_rows[df, columns, wants]
 
 --- `_find_rows[path, columns, vals, names]`: the rows of the file whose
 --- columns hold the values (each written as text, read as its column's
---- kind), every pair at once, with the columns named; each column's
---- groups asked through their bounds and filters first, and only the
---- groups every pair admits decoded — one, for keys the file is sorted by
+--- kind), every pair at once, with the columns named that the file holds
+--- and the columns compared; each column's groups asked through their
+--- bounds and filters first, and only the groups every pair admits
+--- decoded — one, for keys the file is sorted by. A file without a
+--- column compared holds none of its values: no rows
 fn _find_rows[path, columns, vals, names]
     if len[columns] eq 0
         return error['batch: a find names at least one column', 'magpie']
@@ -2005,14 +2017,23 @@ fn _find_rows[path, columns, vals, names]
         df = _pending_read[path, needed]
         if not df.ok
             return error[df.reason, 'magpie']
+        for name in columns
+            if name not in df.columns
+                --- (rows without the column hold none of its values)
+                return frame.head[df, 0]
         wants = []
         for k in range[len[columns]]
             name = columns[k]
-            want = _parsed_as[cell_kind[df.`name`], vals[k]]
+            cells = cell_kind[df.`name`]
+            want = _parsed_as[cells, vals[k]]
             if not want.ok
-                return error['batch: column \'`name`\': `want.reason`', 'magpie']
+                if cells ne 'int' or not _no_int_number[vals[k]]
+                    return error['batch: column \'`name`\': `want.reason`', 'magpie']
+                want = _int_of_number[vals[k]]
+                if want.form eq 0
+                    return frame.head[df, 0]
             wants = push[wants, want]
-        return _only[_held_rows[df, columns, wants], names, path]
+        return _held_rows[df, columns, wants]
     r = fileformat.opened[path]
     if not r.ok
         return error[r.reason, 'magpie']
@@ -2025,10 +2046,20 @@ fn _find_rows[path, columns, vals, names]
         column = columns[k]
         c = _column_at[r, column]
         if c lt 0
-            return error['batch: \'`path`\' holds no column \'`column`\'', 'magpie']
-        want = _parsed_as[r.footer.columns[c].cells, vals[k]]
+            --- (a file without the column holds none of its values)
+            return fileformat.empty_of[r, fileformat.held_of[r, needed]]
+        cells = r.footer.columns[c].cells
+        want = _parsed_as[cells, vals[k]]
         if not want.ok
-            return error['batch: column \'`column`\': `want.reason`', 'magpie']
+            if cells ne 'int' or not _no_int_number[vals[k]]
+                return error['batch: column \'`column`\': `want.reason`', 'magpie']
+            --- (a number that is no int, asked of a column of ints beside
+            --- floats, read as floats: the int it equals, or no row where
+            --- it equals none; `_find_in` refuses it where no file holds
+            --- the column as floats)
+            want = _int_of_number[vals[k]]
+            if want.form eq 0
+                return fileformat.empty_of[r, fileformat.held_of[r, needed]]
         wants = push[wants, want]
         hashed = _bytes_of[want]
         ents = fileformat.entries[r, c]
@@ -2046,9 +2077,7 @@ fn _find_rows[path, columns, vals, names]
                             return error[f.reason, 'magpie']
                         if not bloom.admits[f, hashed]
                             admitted[g] = false
-    cols = fileformat.wanted[r, needed]
-    if not cols.ok
-        return error[cols.reason, 'magpie']
+    cols = fileformat.held_of[r, needed]
     chosen = []
     for g in range[groups]
         if admitted[g]
@@ -2056,19 +2085,53 @@ fn _find_rows[path, columns, vals, names]
     df = fileformat.groups_of[r, chosen, cols]
     if not df.ok
         return error[df.reason, 'magpie']
-    return _only[_held_rows[df, columns, wants], names, path]
+    return _held_rows[df, columns, wants]
 
---- `_find_in[paths, columns, vals, names]`: `_find_rows` over several
---- files, the rows in position order, `_pos` dropped where not asked
-fn _find_in[paths, columns, vals, names]
+--- whether a value as text is a number and no int (`2.5`, `10.0`)
+fn _no_int_number[value]
+    t = trim[value]
+    return not int[t].ok and float[t].ok
+
+--- a number that is no int as text, asked of a column of ints read as
+--- floats: the int it equals (`10.0`), or `form` 0 where it equals none
+--- (`2.5`)
+fn _int_of_number[value]
+    x = float[trim[value]]
+    if x eq floor[x] and x lt 9200000000000000000.0 and x gt -9200000000000000000.0
+        return Want[1, wrap[int[x]], 0.0, '']
+    return Want[0, 0, 0.0, '']
+
+--- `_find_in[paths, columns, vals, names, musts]`: `_find_rows` over
+--- several files, the rows in position order, `_pos` and the columns
+--- compared dropped where not asked; refused where none of the files
+--- holds a column of `musts`, and where a number that is no int is asked
+--- of a column the files hold as ints alone (beside floats it is read as
+--- floats, and compared so)
+fn _find_in[paths, columns, vals, names, musts]
     needed = _with_position[names]
     parts = []
+    labels = slice[['x'], 0, 0]
     for p in paths
         part = _find_rows[p, columns, vals, needed]
         if not part.ok
             return error[part.reason, 'magpie']
         parts = push[parts, part]
-    return _gathered[parts, names]
+        labels = push[labels, p]
+    for k in range[len[columns]]
+        if _no_int_number[vals[k]]
+            name = columns[k]
+            ints = false
+            floats = false
+            for part in parts
+                if name in part.columns
+                    cells = cell_kind[part.`name`]
+                    if cells eq 'int'
+                        ints = true
+                    if cells eq 'float'
+                        floats = true
+            if ints and not floats
+                return error['batch: column \'`name`\': \'`vals[k]`\' is no int', 'magpie']
+    return _gathered[parts, names, labels, musts]
 
 --- the rows of a frame at a position past `after` and at or before
 --- `upto` (every one past `after` with -1)
@@ -2085,8 +2148,9 @@ fn _between_positions[df, after, upto]
         return df
     return df[keep]
 
---- one file's rows past `after` and at or before `upto`: a group whose
---- positions all lie at or before `after`, or all past `upto`, not read
+--- one file's rows past `after` and at or before `upto`, with the columns
+--- needed that it holds: a group whose positions all lie at or before
+--- `after`, or all past `upto`, not read
 fn _since_file[p, after, upto, needed]
     if _pending_path[p]
         df = _pending_read[p, needed]
@@ -2109,9 +2173,7 @@ fn _since_file[p, after, upto, needed]
         past = upto gte 0 and ent.lo.form eq 1 and ent.lo.whole gt upto
         if not before and not past
             chosen = push[chosen, g]
-    cols = fileformat.wanted[r, needed]
-    if not cols.ok
-        return error[cols.reason, 'magpie']
+    cols = fileformat.held_of[r, needed]
     df = fileformat.groups_of[r, chosen, cols]
     if not df.ok
         return error[df.reason, 'magpie']
@@ -2124,12 +2186,14 @@ fn _since_file[p, after, upto, needed]
 fn _since_rows[paths, after, upto, names]
     needed = _with_position[names]
     parts = []
+    labels = slice[['x'], 0, 0]
     for p in paths
         part = _since_file[p, after, upto, needed]
         if not part.ok
             return error[part.reason, 'magpie']
         parts = push[parts, part]
-    return _gathered[parts, names]
+        labels = push[labels, p]
+    return _gathered[parts, names, labels, slice[['x'], 0, 0]]
 
 --- one file's rows whose column lies within the bounds at a position at
 --- or before `upto`: a group whose bounds lie outside the range, or whose
@@ -2143,6 +2207,9 @@ fn _between_file[p, column, lo, hi, upto, needed]
         read_all = _pending_read[p, cols_needed]
         if not read_all.ok
             return error[read_all.reason, 'magpie']
+        if column not in read_all.columns
+            --- (rows without the column lie within no bounds)
+            return _only[frame.head[read_all, 0], needed]
         df = read_all
     else
         r = fileformat.opened[p]
@@ -2150,7 +2217,7 @@ fn _between_file[p, column, lo, hi, upto, needed]
             return error[r.reason, 'magpie']
         c = _column_at[r, column]
         if c lt 0
-            return error['batch: \'`p`\' holds no column \'`column`\'', 'magpie']
+            return fileformat.empty_of[r, fileformat.held_of[r, needed]]
         cells = r.footer.columns[c].cells
         bounds = _bounds_of[cells, column, lo, hi]
         if not bounds.ok
@@ -2172,9 +2239,7 @@ fn _between_file[p, column, lo, hi, upto, needed]
             past = upto gte 0 and pe.lo.form eq 1 and pe.lo.whole gt upto
             if reach and not past
                 chosen = push[chosen, g]
-        cols = fileformat.wanted[r, cols_needed]
-        if not cols.ok
-            return error[cols.reason, 'magpie']
+        cols = fileformat.held_of[r, cols_needed]
         read_some = fileformat.groups_of[r, chosen, cols]
         if not read_some.ok
             return error[read_some.reason, 'magpie']
@@ -2189,7 +2254,7 @@ fn _between_file[p, column, lo, hi, upto, needed]
         keep = push[keep, inside[i] and (upto lt 0 or pos[i] lte upto)]
     picked = df[keep]
     if len[cols_needed] ne len[needed]
-        return _only[picked, needed, p]
+        return _only[picked, needed]
     return picked
 
 --- a range's two ends, each a value as text read as the column's kind
@@ -2218,12 +2283,16 @@ fn _bounds_of[cells, column, lo, hi]
 fn _between_rows[paths, column, lo, hi, upto, names]
     needed = _with_position[names]
     parts = []
+    labels = slice[['x'], 0, 0]
     for p in paths
         part = _between_file[p, column, lo, hi, upto, needed]
         if not part.ok
             return error[part.reason, 'magpie']
         parts = push[parts, part]
-    return _gathered[parts, names]
+        labels = push[labels, p]
+    musts = slice[['x'], 0, 0]
+    musts = push[musts, column]
+    return _gathered[parts, names, labels, musts]
 
 
 --- a scratch log for the tests, emptied first
@@ -2711,3 +2780,149 @@ test a_column_of_vectors_is_held_and_searched_by_a_vector[]
     assert[latest[thin].e[2] eq [1.0, 1.0]]
     assert[nearest[thin, 'e', [1.0, 1.0], 1].id eq ['c']]
     gone = rm[thin]
+
+--- rows written as the log's next batch file the way a Magpie before
+--- the kinds were held wrote them — no kind held to, so the files of the
+--- log may hold a column in two kinds (finchdash's logs, a column written
+--- as text by early runs and as numbers by later ones); the log keyed by
+--- `id` where it has no manifest yet
+fn _written_as_older[dir, df]
+    none = slice[['x'], 0, 0]
+    if not exists['`dir`/manifest']
+        declared = manifest.declare[dir, ['id'], none, none]
+    first = head[dir] + 1
+    number = 0
+    for name in ls[dir]
+        n = manifest.number_of[name]
+        if n gte number
+            number = n + 1
+    numbered = df
+    positions = []
+    for i in range[len[df]]
+        positions = push[positions, first + i]
+    numbered._pos = ints_column[positions, sys.bytes[0]]
+    m = manifest.listed[dir]
+    data = merger.numbered_bytes[dir, numbered, first, m.keys, none]
+    kept = store['`dir`/`manifest.batch_named[number]`', data]
+    forgotten = sequencer.forget_log[dir]
+    return first
+
+--- a column keeps the kind it was first written in: a batch, a put or a
+--- commit whose rows hold it in another — an int is no float — is refused,
+--- the column and both kinds named, and writes nothing
+test a_column_keeps_the_kind_it_was_first_written_in[]
+    dir = _scratch['magpie-test-kinds']
+    assert[batch[dir, frame.new[id = [1], pnl = ['1.5']], by = ['id']] eq 0]
+    e = batch[dir, frame.new[id = [2], pnl = [2.5]]]
+    assert[e.kind eq 'magpie']
+    assert[e.reason eq 'batch: column \'pnl\' holds text in the log at \'magpie-test-kinds\', and float in the rows put — a column keeps the kind it was first written in']
+    assert[put[dir, frame.new[id = [2], pnl = [2.5]]].reason eq e.reason]
+    assert[commit[dir, frame.new[id = [2], pnl = [2.5]]].reason eq e.reason]
+    assert[batch[dir, frame.new[id = [2.0], pnl = ['2']]].reason eq 'batch: column \'id\' holds int in the log at \'magpie-test-kinds\', and float in the rows put — a column keeps the kind it was first written in']
+    assert[head[dir] eq 0 and len[scan[dir]] eq 1]
+    assert[batch[dir, frame.new[id = [2], pnl = ['2.5']]] eq 1]
+    gone = rm[dir]
+    vec = _scratch['magpie-test-kinds-vectors']
+    assert[batch[vec, frame.new[id = [1], e = [[1.0, 0.0]]], by = ['id']] eq 0]
+    assert[batch[vec, frame.new[id = [2], e = [[1.0, 0.0, 0.0]]]].reason eq 'batch: column \'e\' holds vectors of width 2 in the log at \'magpie-test-kinds-vectors\', and of width 3 in the rows put — a column keeps the kind it was first written in']
+    gone = rm[vec]
+
+--- a log's columns grow: a batch may bring columns the log lacks, or
+--- lack ones it holds (not a key); a read answers in the columns the
+--- files it reads hold together, a row of a file written before a column
+--- was missing that column's cells, and a merge keeps every column
+test a_logs_columns_grow[]
+    dir = _scratch['magpie-test-grown']
+    a = batch[dir, frame.new[id = [1, 2], run = ['a', 'b']], by = ['id']]
+    b = batch[dir, frame.new[id = [3], low = [0.5], run = ['c']]]
+    c = batch[dir, frame.new[id = [2], low = [0.25]]]
+    every = scan[dir]
+    assert[every.columns eq ['id', 'low', 'run', '_pos']]
+    assert[every.id eq [1, 2, 3, 2]]
+    assert[not every.low[0].ok and every.low[2] eq 0.5 and every.low[3] eq 0.25]
+    assert[every.run[2] eq 'c' and not every.run[3].ok]
+    t = latest[dir]
+    assert[t.columns eq ['id', 'low', 'run', '_pos'] and t.id eq [1, 3, 2]]
+    assert[latest[dir, columns = ['run']].run[0] eq 'a']
+    assert[latest[dir, equal = ['2']].low eq [0.25]]
+    assert[latest[dir, equal = ['1']].columns eq ['id', 'low', 'run', '_pos']]
+    assert[scan[dir, 0, -1, ['run']].run[1] eq 'b']
+    --- (a read answers in the columns of the files it reaches)
+    assert[since[dir, 3].columns eq ['id', 'low', '_pos']]
+    assert[lookup[dir, ['id'], ['2']]._pos eq [1, 3]]
+    assert[lookup[dir, ['low'], ['0.5']].id eq [3]]
+    assert[lookup[dir, ['nope'], ['1']].reason eq 'batch: column \'nope\' is in none of the files read']
+    assert[scan[dir, 0, -1, ['nope']].reason eq 'batch: column \'nope\' is in none of the files read']
+    assert[summary[dir, ['id'], ['low'], ['count']].low_count eq [0, 1, 1]]
+    assert[search[dir, 'run', ['c']].id eq [3]]
+    assert[commit[dir, frame.new[id = [4], low = [1.0]], 3, ['low'], ['0.5']] eq 4]
+    m = merge[dir]
+    assert[m.ok]
+    folded = scan[dir]
+    --- (a merge keeps each key's newest row, in the order of the positions)
+    assert[folded.columns eq ['id', 'low', 'run', '_pos'] and folded.id eq [1, 3, 2, 4]]
+    assert[not folded.low[0].ok and folded.low[2] eq 0.25 and folded.low[3] eq 1.0]
+    assert[folded.run[0] eq 'a' and folded.run[1] eq 'c' and not folded.run[3].ok]
+    gone = rm[dir]
+    vec = _scratch['magpie-test-grown-vectors']
+    a = batch[vec, frame.new[id = [1, 2]], by = ['id']]
+    b = batch[vec, frame.new[id = [3, 4], e = [[1.0, 0.0], [0.0, 1.0]]]]
+    near = nearest[vec, 'e', [1.0, 0.0], 3]
+    assert[near.id eq [3, 4] and near.columns eq ['id', 'e', '_pos', 'score']]
+    rows = scan[vec]
+    assert[vector_width[rows.e] eq 2 and byte[present_of[rows.e, 0, 4], 0] eq 12]
+    assert[merge[vec].ok]
+    assert[vector_width[scan[vec].e] eq 2 and nearest[vec, 'e', [0.0, 1.0], 1].id eq [4]]
+    gone = rm[vec]
+    ts = _scratch['magpie-test-grown-asof']
+    a = batch[ts, frame.new[sym = ['A', 'B'], t = [10, 10]], by = ['sym'], time = 't']
+    b = batch[ts, frame.new[sym = ['A'], t = [20], px = [2.0]]]
+    j = prior[ts, frame.new[sym = ['A', 'A', 'B'], t = [15, 25, 15]]]
+    assert[j.columns eq ['sym', 't', 'px']]
+    assert[not j.px[0].ok and j.px[1] eq 2.0 and not j.px[2].ok]
+    gone = rm[ts]
+
+--- a log an older Magpie wrote a column into in two kinds is read with an
+--- error naming the column and two of its files — where `frame.stack` had
+--- stopped the program — and takes no rows; a read reaching only the
+--- newer files is answered; an int column beside a float one is read,
+--- summarised, found and merged as floats
+test a_log_of_two_kinds_is_refused_by_name[]
+    dir = _scratch['magpie-test-two-kinds']
+    first = _written_as_older[dir, frame.new[id = [1], pnl = ['1.5']]]
+    second = _written_as_older[dir, frame.new[id = [2], pnl = [2.5]]]
+    assert[second eq 1]
+    said = 'magpie: column \'pnl\' holds text in \'magpie-test-two-kinds/000000000000.batch\' and float in \'magpie-test-two-kinds/000000000001.batch\''
+    assert[latest[dir].reason eq said]
+    assert[scan[dir].reason eq said]
+    assert[lookup[dir, ['id'], ['1']].reason eq said]
+    assert[latest[dir, lo = '1'].reason eq said]
+    assert[latest[dir, equal = ['1']].reason eq said]
+    assert[summary[dir, ['id'], ['pnl'], ['count']].reason eq said]
+    assert[search[dir, 'pnl', ['1.5']].reason eq said]
+    assert[prior[dir, frame.new[id = [1], t = [1]]].kind eq 'magpie']
+    assert[merge[dir].reason eq 'batch: the files to merge disagree: column \'pnl\' holds text in \'magpie-test-two-kinds/000000000000.batch\' and float in \'magpie-test-two-kinds/000000000001.batch\'']
+    assert[batch[dir, frame.new[id = [3], pnl = [3.5]]].reason eq 'batch: the log at \'magpie-test-two-kinds\' takes no rows while its files disagree: column \'pnl\' holds text in \'magpie-test-two-kinds/000000000000.batch\' and float in \'magpie-test-two-kinds/000000000001.batch\'']
+    assert[since[dir, 1].pnl eq [2.5]]
+    gone = rm[dir]
+    wide = _scratch['magpie-test-widened']
+    first = _written_as_older[wide, frame.new[id = [1], qty = [10]]]
+    second = _written_as_older[wide, frame.new[id = [2], qty = [2.5]]]
+    rows = scan[wide]
+    assert[cell_kind[rows.qty] eq 'float' and rows.qty eq [10.0, 2.5]]
+    assert[latest[wide, equal = ['1']].qty eq [10.0]]
+    assert[summary[wide, [], ['qty'], ['sum']].qty_sum eq [12.5]]
+    assert[summary[wide, ['id'], ['qty'], ['max'], on = ['qty'], ops = ['gt'], equal = ['5.5']].id eq [1]]
+    assert[lookup[wide, ['qty'], ['10']].id eq [1]]
+    --- (a value is compared as a float: an int file holds no 2.5, and 10.0
+    --- is its 10)
+    assert[lookup[wide, ['qty'], ['2.5']].id eq [2] and lookup[wide, ['qty'], ['10.0']].id eq [1]]
+    assert[len[lookup[wide, ['qty'], ['7.5']]] eq 0]
+    ints = _scratch['magpie-test-widened-ints']
+    held = batch[ints, frame.new[id = [1], qty = [10]], by = ['id']]
+    assert[lookup[ints, ['qty'], ['2.5']].reason eq 'batch: column \'qty\': \'2.5\' is no int']
+    gone = rm[ints]
+    assert[batch[wide, frame.new[id = [3], qty = [3]]].reason eq 'batch: column \'qty\' holds float in the log at \'magpie-test-widened\', and int in the rows put — a column keeps the kind it was first written in']
+    assert[merge[wide].ok]
+    assert[cell_kind[scan[wide].qty] eq 'float' and scan[wide].qty eq [10.0, 2.5]]
+    gone = rm[wide]

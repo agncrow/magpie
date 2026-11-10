@@ -921,11 +921,13 @@ fn groups_of[r, groups, cols]
     parts = for gi in range[len[groups]]
         _frame_of[pieces, gi, names, kinds, path]
     plain = []
+    labels = slice[['x'], 0, 0]
     for p in parts
         if not p.ok
             return error[p.reason, 'magpie']
         plain = push[plain, p]
-    return frame.stack[plain]
+        labels = push[labels, path]
+    return stacked[plain, labels]
 
 --- `group_of[r, g, cols]`: one group's rows with the columns asked
 fn group_of[r, g, cols]
@@ -963,6 +965,438 @@ fn about[path]
         docs = push[docs, d]
         word_counts = push[word_counts, w]
     return About[2, f.rows, f.first, f.last, f.key_names, len[f.groups], names, kinds, indexed, docs, word_counts]
+
+--- the columns several files or frames hold, as one: each name once, in
+--- order, its kind, and a column of vectors its width (0 where nothing
+--- read says it: a file's footer names no width, and a column of no cell
+--- has none)
+struct Shape [names, kinds, widths]
+
+--- `held_of[r, names]`: the columns named that the file holds, as their
+--- places, in the order asked — every column when none is named: what a
+--- reader reads of each file of a log whose columns grew, where `wanted`
+--- refuses a name the file lacks
+fn held_of[r, names]
+    f = r.footer
+    cols = []
+    if len[names] eq 0
+        for c in range[len[f.columns]]
+            cols = push[cols, c]
+        return cols
+    for w in names
+        found = -1
+        for c in range[len[f.columns]]
+            if f.columns[c].name eq w
+                found = c
+        if found gte 0
+            cols = push[cols, found]
+    return cols
+
+--- `file_shape[r]`: the columns the file holds, as its footer names them
+fn file_shape[r]
+    names = slice[['x'], 0, 0]
+    kinds = slice[['x'], 0, 0]
+    widths = []
+    for m in r.footer.columns
+        names = push[names, m.name]
+        kinds = push[kinds, m.cells]
+        widths = push[widths, 0]
+    return Shape[names, kinds, widths]
+
+--- `holds_cells[col]`: whether the column holds a cell — one of no rows,
+--- or of missing cells alone, holds none (and, of vectors, says no
+--- width)
+fn holds_cells[col]
+    n = len[col]
+    if n eq 0
+        return false
+    present = present_of[col, 0, n]
+    if len[present] eq 0
+        return true
+    for i in range[len[present]]
+        if byte[present, i] ne 0
+            return true
+    return false
+
+--- `frame_shape[df]`: the columns the frame holds, a column of vectors its
+--- width where it holds a cell
+fn frame_shape[df]
+    names = slice[['x'], 0, 0]
+    kinds = slice[['x'], 0, 0]
+    widths = []
+    for name in df.columns
+        col = df.`name`
+        kind = cell_kind[col]
+        w = 0
+        if kind eq 'vector' and holds_cells[col]
+            w = vector_width[col]
+        names = push[names, name]
+        kinds = push[kinds, kind]
+        widths = push[widths, w]
+    return Shape[names, kinds, widths]
+
+--- the place of a name among names, -1 for none
+fn _place_of[names, name]
+    for i in range[len[names]]
+        if names[i] eq name
+            return i
+    return -1
+
+--- names with one more put in at a place
+fn _put_at[names, at, name]
+    out = slice[names, 0, at]
+    out = push[out, name]
+    for i in range[at, len[names]]
+        out = push[out, names[i]]
+    return out
+
+--- a kind as a refusal names it: `int`, `text`, `vectors of width 3`
+fn _kind_said[kind, width]
+    if kind eq 'vector' and width gt 0
+        return 'vectors of width `width`'
+    return kind
+
+--- `joined_shape[shapes, labels]`: the shapes as one. Each name once: a
+--- name the shapes before lack is placed after the name before it in the
+--- shape that holds it (first where it is first), so the order a program
+--- wrote its columns in is kept as the columns grow. Each column the kind
+--- every shape holding it says — or `float`, where some say `int` and
+--- the rest `float`: the ints widen — and a column of vectors the width
+--- the first shape to say one says. An error value of kind `'magpie'`
+--- for a column two shapes hold in other kinds, or as vectors of two
+--- widths, naming the column and the two shapes by their labels
+--- (`column 'pnl' holds text in 'kpis/000000000000.batch' and float in
+--- 'kpis/000000000002.batch'`)
+fn joined_shape[shapes, labels]
+    names = slice[['x'], 0, 0]
+    kinds = map[]
+    widths = map[]
+    kind_at = map[]
+    width_at = map[]
+    for si in range[len[shapes]]
+        s = shapes[si]
+        for ci in range[len[s.names]]
+            name = s.names[ci]
+            kind = s.kinds[ci]
+            w = s.widths[ci]
+            if name in kinds
+                had = kinds[name]
+                if had ne kind
+                    if had eq 'int' and kind eq 'float'
+                        kinds = set[kinds, name, 'float']
+                        kind_at = set[kind_at, name, si]
+                    else
+                        if not (had eq 'float' and kind eq 'int')
+                            return error['column \'`name`\' holds `_kind_said[had, widths[name]]` in \'`labels[kind_at[name]]`\' and `_kind_said[kind, w]` in \'`labels[si]`\'', 'magpie']
+                if kind eq 'vector' and w gt 0
+                    if widths[name] eq 0
+                        widths = set[widths, name, w]
+                        width_at = set[width_at, name, si]
+                    else
+                        if widths[name] ne w
+                            return error['column \'`name`\' holds vectors of width `widths[name]` in \'`labels[width_at[name]]`\' and of width `w` in \'`labels[si]`\'', 'magpie']
+            else
+                at = 0
+                if ci gt 0
+                    at = _place_of[names, s.names[ci - 1]] + 1
+                names = _put_at[names, at, name]
+                kinds = set[kinds, name, kind]
+                widths = set[widths, name, w]
+                kind_at = set[kind_at, name, si]
+                width_at = set[width_at, name, si]
+    out_kinds = slice[['x'], 0, 0]
+    out_widths = []
+    for name in names
+        out_kinds = push[out_kinds, kinds[name]]
+        out_widths = push[out_widths, widths[name]]
+    return Shape[names, out_kinds, out_widths]
+
+--- `missing_column[kind, width, n]`: a column of `n` missing cells of the
+--- kind — vectors of the width, 1 where it is 0
+fn missing_column[kind, width, n]
+    gap = sys.bytes[shift[n + 7, -3]]
+    if kind eq 'int'
+        zeros = []
+        for i in range[n]
+            zeros = push[zeros, 0]
+        return ints_column[zeros, gap]
+    if kind eq 'float'
+        reals = []
+        for i in range[n]
+            reals = push[reals, 0.0]
+        return floats_column[reals, gap]
+    if kind eq 'bool'
+        return bools_column[sys.bytes[shift[n + 7, -3]], n, gap]
+    if kind eq 'moment'
+        ms = []
+        zones = []
+        for i in range[n]
+            ms = push[ms, 0]
+            zones = push[zones, 0]
+        return moments_column[ms, zones, gap]
+    if kind eq 'vector'
+        w = width
+        if w lt 1
+            w = 1
+        flat = []
+        for i in range[n * w]
+            flat = push[flat, 0.0]
+        return vectors_column[w, flat, gap]
+    cut_ends = []
+    for i in range[n]
+        cut_ends = push[cut_ends, 0]
+    return text_column[sys.bytes[0], cut_ends, gap]
+
+--- an int column as floats, its missing cells kept
+fn _widened[col]
+    n = len[col]
+    reals = []
+    for v in ints_of[col, 0, n]
+        reals = push[reals, float[v]]
+    return floats_column[reals, present_of[col, 0, n]]
+
+--- whether the frame has the shape already: its columns, in order, each
+--- of the shape's kind, vectors of its width
+fn _in_shape[df, s]
+    if df.columns ne s.names
+        return false
+    for i in range[len[s.names]]
+        name = s.names[i]
+        col = df.`name`
+        if cell_kind[col] ne s.kinds[i]
+            return false
+        if s.kinds[i] eq 'vector' and s.widths[i] gt 0 and len[col] gt 0 and vector_width[col] ne s.widths[i]
+            return false
+    return true
+
+--- `fitted[df, s]`: the frame in the shape — its columns in the shape's
+--- order, a column it lacks as missing cells of the shape's kind, an int
+--- column the shape holds as floats widened, a column of vectors whose
+--- cells are all missing made the shape's width; the frame as it is
+--- where it has the shape. An error value of kind `'magpie'` for a
+--- column the shape lacks, one of another kind, or vectors of another
+--- width
+fn fitted[df, s]
+    if _in_shape[df, s]
+        return df
+    for name in df.columns
+        if _place_of[s.names, name] lt 0
+            return error['the shape holds no column \'`name`\'', 'magpie']
+    n = len[df]
+    out = frame.new[]
+    for i in range[len[s.names]]
+        name = s.names[i]
+        kind = s.kinds[i]
+        w = s.widths[i]
+        if name in df.columns
+            have = df.`name`
+            held = cell_kind[have]
+            if held eq kind
+                if kind eq 'vector' and w gt 0 and n gt 0 and vector_width[have] ne w
+                    if holds_cells[have]
+                        return error['column \'`name`\' holds vectors of width `vector_width[have]`, not of width `w`', 'magpie']
+                    out.`name` = missing_column[kind, w, n]
+                else
+                    out.`name` = have
+            else
+                if held eq 'int' and kind eq 'float'
+                    out.`name` = _widened[have]
+                else
+                    return error['column \'`name`\' holds `held`, not `_kind_said[kind, w]`', 'magpie']
+        else
+            out.`name` = missing_column[kind, w, n]
+    return out
+
+--- `empty_frame[s]`: a frame of the shape's columns and no rows
+fn empty_frame[s]
+    f = frame.new[]
+    for i in range[len[s.names]]
+        name = s.names[i]
+        f.`name` = missing_column[s.kinds[i], s.widths[i], 0]
+    return f
+
+--- whether the frames hold one shape already: the same columns in the
+--- same order, each of one kind, vectors of one width
+fn _one_shape[parts]
+    first = parts[0]
+    names = first.columns
+    for p in parts
+        if p.columns ne names
+            return false
+    for name in names
+        kind = cell_kind[first.`name`]
+        w = 0
+        for p in parts
+            col = p.`name`
+            if cell_kind[col] ne kind
+                return false
+            if kind eq 'vector' and len[col] gt 0
+                if w eq 0
+                    w = vector_width[col]
+                else
+                    if vector_width[col] ne w
+                        return false
+    return true
+
+--- the shape with a column of vectors whose width nothing says made one
+--- of width 1
+fn _some_width[s]
+    if 'vector' not in s.kinds
+        return s
+    widths = []
+    for i in range[len[s.names]]
+        w = s.widths[i]
+        if s.kinds[i] eq 'vector' and w eq 0
+            w = 1
+        widths = push[widths, w]
+    return Shape[s.names, s.kinds, widths]
+
+--- `stacked[parts, labels]`: the frames stacked as one, in their order:
+--- each fitted first to the shape they hold together (`joined_shape`,
+--- each named by its label where a refusal names it), so frames of other
+--- columns stack, a column one lacks its missing cells, and ints beside
+--- floats widen; frames of one shape are stacked as they are. A frame of
+--- no columns where there are no frames. An error value of kind
+--- `'magpie'` where a column holds kinds no shape joins, naming the
+--- column and the two labels — where `frame.stack` stops the program
+fn stacked[parts, labels]
+    if len[parts] eq 0
+        return frame.new[]
+    if len[parts] eq 1
+        return parts[0]
+    if _one_shape[parts]
+        return frame.stack[parts]
+    shapes = []
+    for p in parts
+        shapes = push[shapes, frame_shape[p]]
+    s = joined_shape[shapes, labels]
+    if not s.ok
+        return error['magpie: `s.reason`', 'magpie']
+    --- (a column of vectors no frame holds a cell of takes width 1, so its
+    --- missing cells stack whatever width each frame made them)
+    s = _some_width[s]
+    fits = []
+    for i in range[len[parts]]
+        f = fitted[parts[i], s]
+        if not f.ok
+            return error['magpie: \'`labels[i]`\': `f.reason`', 'magpie']
+        fits = push[fits, f]
+    return frame.stack[fits]
+
+--- `no_shape[]`: the shape of no columns
+fn no_shape[]
+    widths = []
+    widths = push[widths, 0]
+    return Shape[slice[['x'], 0, 0], slice[['x'], 0, 0], slice[widths, 0, 0]]
+
+--- `shape_with[s, name, kind]`: the shape with a column more, last (as it
+--- is where it holds the name)
+fn shape_with[s, name, kind]
+    if _place_of[s.names, name] gte 0
+        return s
+    return Shape[push[s.names, name], push[s.kinds, kind], push[s.widths, 0]]
+
+--- `shape_without[s, name]`: the shape without the column named
+fn shape_without[s, name]
+    at = _place_of[s.names, name]
+    if at lt 0
+        return s
+    names = slice[['x'], 0, 0]
+    kinds = slice[['x'], 0, 0]
+    widths = []
+    for i in range[len[s.names]]
+        if i ne at
+            names = push[names, s.names[i]]
+            kinds = push[kinds, s.kinds[i]]
+            widths = push[widths, s.widths[i]]
+    return Shape[names, kinds, widths]
+
+--- `narrowed[s, names]`: the shape of the columns named that it holds, in
+--- the order named
+fn narrowed[s, names]
+    out_names = slice[['x'], 0, 0]
+    out_kinds = slice[['x'], 0, 0]
+    out_widths = []
+    for name in names
+        at = _place_of[s.names, name]
+        if at gte 0
+            out_names = push[out_names, name]
+            out_kinds = push[out_kinds, s.kinds[at]]
+            out_widths = push[out_widths, s.widths[at]]
+    return Shape[out_names, out_kinds, out_widths]
+
+--- the width of vectors column `c` of the file holds, as the first group
+--- holding a cell of it says (one chunk read); 0 where no group does
+fn _width_in[r, c]
+    es = entries[r, c]
+    if not es.ok
+        return error[es.reason, 'magpie']
+    for g in range[len[es]]
+        if es[g].absent lt r.footer.groups[g]
+            col = chunk_of[r, c, es[g]]
+            if not col.ok
+                return error[col.reason, 'magpie']
+            return vector_width[col]
+    return 0
+
+--- the width of vectors the newest file holding a cell of the column says
+--- (the files tried newest first, by their last positions); 0 where none
+--- does
+fn _newest_width[rs, name]
+    tried = []
+    for r in rs
+        tried = push[tried, false]
+    for turn in range[len[rs]]
+        best = -1
+        for i in range[len[rs]]
+            if not tried[i] and (best lt 0 or rs[i].footer.last gt rs[best].footer.last)
+                best = i
+        tried[best] = true
+        r = rs[best]
+        for c in range[len[r.footer.columns]]
+            m = r.footer.columns[c]
+            if m.name eq name and m.cells eq 'vector'
+                w = _width_in[r, c]
+                if not w.ok
+                    return error[w.reason, 'magpie']
+                if w gt 0
+                    return w
+    return 0
+
+--- `probed_shape[r]`: the columns the file holds, as its footer names
+--- them, a column of vectors the width its first group holding a cell
+--- says (a chunk of it read; 0 where no group holds one)
+fn probed_shape[r]
+    s = file_shape[r]
+    if 'vector' not in s.kinds
+        return s
+    widths = []
+    for c in range[len[s.names]]
+        w = 0
+        if s.kinds[c] eq 'vector'
+            got = _width_in[r, c]
+            if not got.ok
+                return error[got.reason, 'magpie']
+            w = got
+        widths = push[widths, w]
+    return Shape[s.names, s.kinds, widths]
+
+--- `widths_from[s, rs]`: the shape with each column of vectors whose width
+--- it does not say given the width the newest file holding a cell of it
+--- says — a footer names no width, so a chunk of the column is read
+fn widths_from[s, rs]
+    if 'vector' not in s.kinds
+        return s
+    widths = []
+    for i in range[len[s.names]]
+        w = s.widths[i]
+        if s.kinds[i] eq 'vector' and w eq 0
+            got = _newest_width[rs, s.names[i]]
+            if not got.ok
+                return error[got.reason, 'magpie']
+            w = got
+        widths = push[widths, w]
+    return Shape[s.names, s.kinds, widths]
 
 --- five floats as a list (a literal of numbers is a tensor)
 fn _floats[a, b, c, d, e]
@@ -1129,3 +1563,53 @@ test a_torn_or_foreign_file_is_refused_with_its_reason[]
     assert[find[opened[newer].reason, 'format 9'].ok]
     assert[opened[newer].reason eq 'magpie: \'target/crow_file_test/newer.batch\' was written in format 9, and this Crow reads format 2 — read it with the Crow that wrote it, or a newer one']
     assert[find[opened['`dir`/nosuch.batch'].reason, 'cannot read'].ok]
+
+--- frames of other columns stack, each fitted to the columns they hold
+--- together: a column one lacks is missing cells there, ints beside
+--- floats widen, a column of vectors whose cells are all missing takes the
+--- width the others say; a column two hold in other kinds is refused,
+--- naming it and the two frames — where `frame.stack` stops the program
+test frames_of_other_columns_stack_and_a_kind_conflict_is_refused[]
+    a = frame.new[id = [1, 2], qty = [10, 20]]
+    b = frame.new[id = [3], note = ['x'], qty = [2.5]]
+    two = []
+    two = push[two, a]
+    two = push[two, b]
+    whole = stacked[two, ['a', 'b']]
+    assert[whole.ok]
+    assert[whole.columns eq ['id', 'note', 'qty']]
+    assert[cell_kind[whole.qty] eq 'float' and cell_kind[whole.id] eq 'int']
+    assert[floats_of[whole.qty, 0, 3] eq slice[_floats[10.0, 20.0, 2.5, 0.0, 0.0], 0, 3]]
+    assert[byte[present_of[whole.note, 0, 3], 0] eq 4]
+    assert[whole.note[2] eq 'x']
+    s = joined_shape[[frame_shape[a], frame_shape[b]], ['a', 'b']]
+    assert[s.names eq whole.columns and s.kinds eq ['int', 'text', 'float']]
+    assert[not fitted[b, frame_shape[a]].ok]
+    assert[fitted[b, frame_shape[a]].reason eq 'the shape holds no column \'note\'']
+    assert[len[empty_frame[s]] eq 0 and empty_frame[s].columns eq s.names]
+    c = frame.new[id = [4], qty = ['many']]
+    three = push[two, c]
+    e = stacked[three, ['a', 'b', 'c']]
+    assert[not e.ok]
+    assert[e.reason eq 'magpie: column \'qty\' holds float in \'b\' and text in \'c\'']
+    same_two = []
+    same_two = push[same_two, a]
+    same_two = push[same_two, frame.new[id = [5], qty = [50]]]
+    assert[_same_frames[stacked[same_two, ['a', 'd']], frame.stack[same_two]]]
+    flat = []
+    for x in _floats[1.0, 0.0, 0.0, 1.0, 0.0]
+        flat = push[flat, x]
+    v = frame.new[]
+    v.e = vectors_column[2, slice[flat, 0, 4], sys.bytes[0]]
+    gone = frame.new[]
+    gone.e = missing_column['vector', 0, 3]
+    vs = []
+    vs = push[vs, gone]
+    vs = push[vs, v]
+    wide = stacked[vs, ['gone', 'v']]
+    assert[wide.ok and len[wide] eq 5 and vector_width[wide.e] eq 2]
+    assert[byte[present_of[wide.e, 0, 5], 0] eq 24]
+    w3 = frame.new[]
+    w3.e = vectors_column[3, slice[concat[flat, flat], 0, 3], sys.bytes[0]]
+    vs = push[vs, w3]
+    assert[stacked[vs, ['gone', 'v', 'w3']].reason eq 'magpie: column \'e\' holds vectors of width 2 in \'v\' and of width 3 in \'w3\'']

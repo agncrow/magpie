@@ -1,0 +1,69 @@
+--- A column keeps the kind it was first written in, and a log's columns
+--- grow — in both modes. A batch whose rows hold a column in another kind
+--- (an int is no float) is refused, the column and both kinds named; a
+--- batch may bring columns the log lacks, or lack ones it holds, and every
+--- read answers in the columns the files hold together, a row written
+--- before a column was missing that column's cells. A log whose files hold
+--- a column in two kinds — written by a Magpie that held no kind, as
+--- finchdash's were — is refused by name where `frame.stack` had stopped
+--- the program, and an int column beside a float one is read as floats.
+use magpie, frame, magpie.merger, magpie.manifest
+
+d = 'parity-435'
+gone = rm[d]
+log[magpie.batch[d, frame.new[id = [1, 2], run = ['a', 'b']], by = ['id']]]
+e = magpie.batch[d, frame.new[id = [3], run = [2.5]]]
+log[e.ok]
+log[e.reason]
+log[magpie.put[d, frame.new[id = [3.0], run = ['c']]].reason]
+log[magpie.batch[d, frame.new[id = [3], low = [0.5], run = ['c']]]]
+log[magpie.batch[d, frame.new[id = [2], low = [0.25]]]]
+every = magpie.scan[d]
+log[every.columns]
+log[every]
+log[magpie.latest[d]]
+log[magpie.latest[d, equal = ['2']]]
+log[magpie.since[d, 3].columns]
+log[magpie.lookup[d, ['low'], ['0.5']].id]
+log[magpie.lookup[d, ['nope'], ['1']].reason]
+log[magpie.summary[d, ['id'], ['low'], ['count']]]
+log[magpie.search[d, 'run', ['c']].id]
+seg = magpie.merge[d]
+log[magpie.scan[d]]
+gone = rm[d]
+
+--- two batch files written as an older Magpie wrote them: no kind held to
+none = slice[['x'], 0, 0]
+old = 'parity-435-old'
+gone = rm[old]
+made = mkdir[old]
+k = manifest.declare[old, ['id'], none, none]
+w = merger.write_batch[old, 0, 0, frame.new[id = [1], pnl = ['1.5']], ['id'], none]
+w = merger.write_batch[old, 1, 1, frame.new[id = [2], pnl = [2.5]], ['id'], none]
+log[magpie.latest[old].reason]
+log[magpie.lookup[old, ['id'], ['1']].reason]
+log[magpie.latest[old, equal = ['1']].reason]
+log[magpie.summary[old, ['id'], ['pnl'], ['count']].reason]
+log[magpie.search[old, 'pnl', ['1.5']].reason]
+log[magpie.merge[old].reason]
+log[magpie.batch[old, frame.new[id = [3], pnl = [3.5]]].reason]
+log[magpie.since[old, 1]]
+gone = rm[old]
+
+wide = 'parity-435-wide'
+gone = rm[wide]
+made = mkdir[wide]
+k = manifest.declare[wide, ['id'], none, none]
+w = merger.write_batch[wide, 0, 0, frame.new[id = [1], qty = [10]], ['id'], none]
+w = merger.write_batch[wide, 1, 1, frame.new[id = [2], qty = [2.5]], ['id'], none]
+rows = magpie.scan[wide]
+log[cell_kind[rows.qty]]
+log[rows]
+log[magpie.summary[wide, [], ['qty'], ['sum']]]
+log[magpie.lookup[wide, ['qty'], ['10']].id]
+log[magpie.lookup[wide, ['qty'], ['2.5']].id]
+log[magpie.lookup[wide, ['qty'], ['10.0']].id]
+log[magpie.batch[wide, frame.new[id = [3], qty = [3]]].reason]
+seg = magpie.merge[wide]
+log[magpie.scan[wide]]
+gone = rm[wide]

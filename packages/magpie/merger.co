@@ -41,9 +41,10 @@ struct Seg [out, blocks, groups, first, last, rows, open]
 --- what a merge answers: the segments written, the last counter taken
 struct Merged [written, counter]
 
---- the next group of an input with rows, loaded; drained where none is
---- left
-fn _load[s]
+--- the next group of an input with rows, loaded in the merge's columns
+--- (`shape`: a column the file lacks as missing cells, an int column the
+--- inputs hold as floats widened); drained where none is left
+fn _load[s, shape]
     at = s.next
     while at lt s.count
         g = fileformat.group_of[s.r, at, s.cols]
@@ -52,8 +53,12 @@ fn _load[s]
         at = at + 1
         n = len[g]
         if n gt 0
-            pos = ints_of[g._pos, n - 1, n]
-            return Loaded[Source[s.r, s.cols, at, s.count, pos[0], at gte s.count], g]
+            fit = fileformat.fitted[g, shape]
+            if not fit.ok
+                path = s.r.path
+                return error['magpie: \'`path`\': `fit.reason`', 'magpie']
+            pos = ints_of[fit._pos, n - 1, n]
+            return Loaded[Source[s.r, s.cols, at, s.count, pos[0], at gte s.count], fit]
     return Loaded[Source[s.r, s.cols, at, s.count, s.last, true], frame.new[]]
 
 --- the bytes each row of a frame takes in a group being built, as the
@@ -217,36 +222,47 @@ fn write_batch[dir, number, first, f, keyed, texts]
 --- rows in key-then-position order, one version per key where `keyed`
 --- names keys and `every` is false; the text columns in `texts` indexed,
 --- the float columns in `narrow` in 32 bits, the tokens stemmed where
---- `stems`. Answers the segments written and the last counter
+--- `stems`. The segments hold the columns the files hold together
+--- (`fileformat.joined_shape`): a file written before the log's columns
+--- grew is missing the newer ones' cells, and an int column beside a
+--- float one is floats. Refused where a column holds two kinds, or
+--- vectors of two widths, naming the column and two files. Answers the
+--- segments written and the last counter
 fn merge_into[dir, paths, keyed, texts, narrow, stems, every, taken, group_limit, segment_limit]
     if len[paths] eq 0
         return error['batch: a merge takes one file or more', 'magpie']
-    head_r = fileformat.opened[paths[0]]
-    if not head_r.ok
-        return error[head_r.reason, 'magpie']
-    names = []
-    kinds = []
-    for c in head_r.footer.columns
-        names = push[names, c.name]
-        kinds = push[kinds, c.cells]
-    sources = []
-    held_parts = []
+    readers = []
+    shapes = []
+    labels = slice[['x'], 0, 0]
     for p in paths
         r = fileformat.opened[p]
         if not r.ok
             return error[r.reason, 'magpie']
-        cols = fileformat.wanted[r, names]
-        if not cols.ok
-            return error[cols.reason, 'magpie']
-        for i in range[len[cols]]
-            if r.footer.columns[cols[i]].cells ne kinds[i]
-                return error['batch: \'`p`\' has other columns than the files before it — a merge takes files of one shape', 'magpie']
-        loaded = _load[Source[r, cols, 0, len[r.footer.groups], -1, false]]
+        --- (a column of vectors read for its width: a segment's groups hold
+        --- one)
+        probed = fileformat.probed_shape[r]
+        if not probed.ok
+            return error[probed.reason, 'magpie']
+        readers = push[readers, r]
+        shapes = push[shapes, probed]
+        labels = push[labels, p]
+    joined = fileformat.joined_shape[shapes, labels]
+    if not joined.ok
+        return error['batch: the files to merge disagree: `joined.reason`', 'magpie']
+    names = joined.names
+    kinds = joined.kinds
+    sources = []
+    held_parts = []
+    held_labels = slice[['x'], 0, 0]
+    for r in readers
+        cols = fileformat.held_of[r, names]
+        loaded = _load[Source[r, cols, 0, len[r.footer.groups], -1, false], joined]
         if not loaded.ok
             return error[loaded.reason, 'magpie']
         sources = push[sources, loaded.s]
         if len[loaded.rows] gt 0
             held_parts = push[held_parts, loaded.rows]
+            held_labels = push[held_labels, r.path]
     for k in keyed
         if k not in names
             return error['batch: no column \'`k`\' to merge by', 'magpie']
@@ -267,7 +283,9 @@ fn merge_into[dir, paths, keyed, texts, narrow, stems, every, taken, group_limit
     written = []
     group_parts = []
     group_size = 0
-    pool = frame.stack[held_parts]
+    pool = fileformat.stacked[held_parts, held_labels]
+    if not pool.ok
+        return error[pool.reason, 'magpie']
     going = true
     while going
         sorted = pool
@@ -334,7 +352,7 @@ fn merge_into[dir, paths, keyed, texts, narrow, stems, every, taken, group_limit
         if owner lt 0
             going = false
         else
-            loaded = _load[sources[owner]]
+            loaded = _load[sources[owner], joined]
             if not loaded.ok
                 return error[loaded.reason, 'magpie']
             sources[owner] = loaded.s
@@ -342,7 +360,11 @@ fn merge_into[dir, paths, keyed, texts, narrow, stems, every, taken, group_limit
                 both = []
                 both = push[both, pool]
                 both = push[both, loaded.rows]
-                pool = frame.stack[both]
+                named = slice[['x'], 0, 0]
+                named = push[push[named, 'the rows held'], 'the rows loaded']
+                pool = fileformat.stacked[both, named]
+                if not pool.ok
+                    return error[pool.reason, 'magpie']
     done = _flushed_group[dir, group_parts, shape, narrowed, stems, seg, written, taken, keyed, segment_limit, true]
     if not done.ok
         return error[done.reason, 'magpie']
@@ -365,7 +387,12 @@ fn _flushed_group[dir, parts, shape, narrowed, stems, seg, written, taken, keyed
     if rows gt 0
         g = parts[0]
         if len[parts] gt 1
-            g = frame.stack[parts]
+            named = slice[['x'], 0, 0]
+            for p in parts
+                named = push[named, 'the group']
+            g = fileformat.stacked[parts, named]
+            if not g.ok
+                return error[g.reason, 'magpie']
         made = fileformat.group_bytes[g, 0, rows, shape, narrowed, stems, len[seg.out]]
         if not made.ok
             return error[made.reason, 'magpie']
@@ -484,7 +511,9 @@ fn _name_of[path]
 --- the inputs that were segments. Answers the first segment's path; the
 --- inputs are left for the caller to remove once the manifest names the
 --- segments. Refused: no files, a file that is neither a batch nor a
---- segment by its name, files of different columns
+--- segment by its name, files holding a column in two kinds (an older
+--- Magpie wrote such logs). Files of other columns merge: the segments
+--- hold the columns they hold together
 fn merge_files[dir, paths, every]
     if len[paths] eq 0
         return error['batch: a merge takes one file or more', 'magpie']

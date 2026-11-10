@@ -423,6 +423,15 @@ fn summary_of[paths, by, of, how, on, ops, equal, lo, hi, upto]
         opw = push[opw, w]
     if len[paths] eq 0
         return frame.new[]
+    --- the columns the files hold together: the answer's kinds (an int
+    --- column beside a float one read as floats), and a column the summary
+    --- names that none of them holds refused
+    shape = sequencer.shape_of[paths]
+    if not shape.ok
+        return error[shape.reason, 'magpie']
+    for n in concat[concat[by, of], on]
+        if n not in shape.names
+            return error['batch: column \'`n`\' is in none of the files read', 'magpie']
     --- every path opened first, as the kernel opens them: a file's reader,
     --- or the tail's pending rows read whole, one group of their own
     readers = []
@@ -449,15 +458,8 @@ fn summary_of[paths, by, of, how, on, ops, equal, lo, hi, upto]
     for c in on
         if c not in pcols
             pcols = push[pcols, c]
-    --- the first path's columns and kinds: the answer's kinds
-    first_kinds = map[]
-    if is_held[0]
-        first = held[slot[0]]
-        for c in first.columns
-            first_kinds = set[first_kinds, c, cell_kind[first.`c`]]
-    else
-        for c in readers[slot[0]].footer.columns
-            first_kinds = set[first_kinds, c.name, c.cells]
+    --- the columns' kinds: the answer's
+    first_kinds = _kinds_of[shape]
     keys_seen = map[]
     key_cells = []
     totals = []
@@ -466,7 +468,7 @@ fn summary_of[paths, by, of, how, on, ops, equal, lo, hi, upto]
     for at_path in range[len[paths]]
         units = []
         if is_held[at_path]
-            unit = _pending_unit[held[slot[at_path]], paths[at_path], _log_key[paths[at_path]], by, of, on, opw, equal, pcols, lo, hi, upto]
+            unit = _pending_unit[held[slot[at_path]], paths[at_path], _log_key[paths[at_path]], by, of, on, opw, equal, pcols, lo, hi, upto, shape]
             if not unit.ok
                 return error[unit.reason, 'magpie']
             units = push[units, unit]
@@ -476,7 +478,7 @@ fn summary_of[paths, by, of, how, on, ops, equal, lo, hi, upto]
             if len[r.footer.key_names] gt 0
                 keys0 = r.footer.key_names[0]
             for g in range[len[r.footer.groups]]
-                unit = _unit[r, g, keys0, by, of, on, opw, equal, pcols, lo, hi, upto]
+                unit = _unit[r, g, keys0, by, of, on, opw, equal, pcols, lo, hi, upto, shape]
                 if not unit.ok
                     return error[unit.reason, 'magpie']
                 units = push[units, unit]
@@ -526,15 +528,41 @@ fn _unit_names[by, of, on, ranged, keys0]
         names = push[names, '_pos']
     return names
 
+--- each column's kind, by its name
+fn _kinds_of[shape]
+    kinds = map[]
+    for i in range[len[shape.names]]
+        kinds = set[kinds, shape.names[i], shape.kinds[i]]
+    return kinds
+
+--- a group's rows (or the pending rows) with the columns named, in the
+--- log's kinds: a column the rows lack as missing cells, an int column
+--- the log reads as floats widened (the rows as they are where they hold
+--- the columns in those kinds already)
+fn _fit_to[df, shape, names]
+    held = slice[['x'], 0, 0]
+    for n in names
+        if n in df.columns
+            held = push[held, n]
+    picked = df
+    if held ne df.columns
+        picked = frame.select[df, held]
+    return fileformat.fitted[picked, fileformat.narrowed[shape, names]]
+
 --- the pending rows' partials, by key text: their checks as a file's
 --- group meets them (the first key's range, each predicate's column and
---- values, the columns read), then their rows as a group's
-fn _pending_unit[df, path, keys0, by, of, on, opw, equal, pcols, lo, hi, upto]
+--- values, the columns read), then their rows as a group's; none where
+--- they lack a column a predicate names (a missing cell passes none)
+fn _pending_unit[df, path, keys0, by, of, on, opw, equal, pcols, lo, hi, upto, shape]
+    out = map[]
+    kinds = _kinds_of[shape]
     ranged = (len[lo] gt 0 or len[hi] gt 0) and len[keys0] gt 0
     low = _none_cell[]
     high = _none_cell[]
     if ranged and keys0 in df.columns
         kind = cell_kind[df.`keys0`]
+        if keys0 in kinds
+            kind = kinds[keys0]
         if len[lo] gt 0
             got = _parse[kind, lo]
             if not got.ok
@@ -547,17 +575,17 @@ fn _pending_unit[df, path, keys0, by, of, on, opw, equal, pcols, lo, hi, upto]
             high = got
     for column in pcols
         if column not in df.columns
-            return error['batch: \'`path`\' holds no column \'`column`\'', 'magpie']
-        kind = cell_kind[df.`column`]
+            return out
+        kind = kinds[column]
         for i in range[len[on]]
             if on[i] eq column
                 want = _parse[kind, equal[i]]
                 if not want.ok
                     return error['batch: column \'`column`\': `want.reason`', 'magpie']
-    for n in _unit_names[by, of, on, ranged, keys0]
-        if n not in df.columns
-            return error['batch: \'`path`\' holds no column \'`n`\'', 'magpie']
-    return _unit_rows[df, keys0, ranged, low, high, by, of, on, opw, equal, pcols, upto]
+    fit = _fit_to[df, shape, _unit_names[by, of, on, ranged, keys0]]
+    if not fit.ok
+        return error['magpie: \'`path`\': `fit.reason`', 'magpie']
+    return _unit_rows[fit, keys0, ranged, low, high, by, of, on, opw, equal, pcols, upto]
 
 --- the bytes a value hashes to in a column's filter
 fn _want_bytes[want]
@@ -573,10 +601,14 @@ fn _want_bytes[want]
     return sys.bytes[want.word]
 
 --- one row group's partials, by key text — none where the group's
---- statistics show it holds no row the summary reads
-fn _unit[r, g, keys0, by, of, on, opw, equal, pcols, lo, hi, upto]
+--- statistics show it holds no row the summary reads, or the file lacks
+--- a column a predicate names (a missing cell passes none). A column the
+--- file holds as ints and the log as floats is read widened, its
+--- statistics (ints) passed over and its values read as the log's kind
+fn _unit[r, g, keys0, by, of, on, opw, equal, pcols, lo, hi, upto, shape]
     out = map[]
     f = r.footer
+    kinds = _kinds_of[shape]
     if upto gte 0
         pc = _column_at[r, '_pos']
         if pc gte 0
@@ -595,25 +627,31 @@ fn _unit[r, g, keys0, by, of, on, opw, equal, pcols, lo, hi, upto]
             if not ke.ok
                 return error[ke.reason, 'magpie']
             kind = f.columns[kc].cells
+            wide = keys0 in kinds and kinds[keys0] ne kind
+            if wide
+                kind = kinds[keys0]
             if len[lo] gt 0
                 got = _parse[kind, lo]
                 if not got.ok
                     return error['batch: column \'`keys0`\': `got.reason`', 'magpie']
                 low = got
-                if not _group_may[ke[g], 'ge', low]
+                if not wide and not _group_may[ke[g], 'ge', low]
                     return out
             if len[hi] gt 0
                 got = _parse[kind, hi]
                 if not got.ok
                     return error['batch: column \'`keys0`\': `got.reason`', 'magpie']
                 high = got
-                if not _group_may[ke[g], 'le', high]
+                if not wide and not _group_may[ke[g], 'le', high]
                     return out
     for column in pcols
         c = _column_at[r, column]
         if c lt 0
-            return error['batch: \'`r.path`\' holds no column \'`column`\'', 'magpie']
+            return out
         kind = f.columns[c].cells
+        wide = column in kinds and kinds[column] ne kind
+        if wide
+            kind = kinds[column]
         ce = fileformat.entries[r, c]
         if not ce.ok
             return error[ce.reason, 'magpie']
@@ -624,7 +662,9 @@ fn _unit[r, g, keys0, by, of, on, opw, equal, pcols, lo, hi, upto]
                 want = _parse[kind, equal[i]]
                 if not want.ok
                     return error['batch: column \'`column`\': `want.reason`', 'magpie']
-                if _group_may[ent, opw[i], want]
+                if wide
+                    admitted_any = true
+                if not admitted_any and _group_may[ent, opw[i], want]
                     sieved = false
                     if opw[i] eq 'eq' and ent.bloom_len gt 0
                         bf = fileformat.value_filter[r, ent]
@@ -635,13 +675,14 @@ fn _unit[r, g, keys0, by, of, on, opw, equal, pcols, lo, hi, upto]
                         admitted_any = true
         if not admitted_any
             return out
-    cols = fileformat.wanted[r, _unit_names[by, of, on, ranged, keys0]]
-    if not cols.ok
-        return error[cols.reason, 'magpie']
-    df = fileformat.group_of[r, g, cols]
+    names = _unit_names[by, of, on, ranged, keys0]
+    df = fileformat.group_of[r, g, fileformat.held_of[r, names]]
     if not df.ok
         return error[df.reason, 'magpie']
-    return _unit_rows[df, keys0, ranged, low, high, by, of, on, opw, equal, pcols, upto]
+    fit = _fit_to[df, shape, names]
+    if not fit.ok
+        return error['magpie: \'`r.path`\': `fit.reason`', 'magpie']
+    return _unit_rows[fit, keys0, ranged, low, high, by, of, on, opw, equal, pcols, upto]
 
 --- a group's rows (or the pending rows) as partials by key text: masked
 --- by the positions, the first key's range and the predicates, grouped
@@ -903,10 +944,10 @@ fn _int_partials[vs, present, gidx, ng, pos]
             parts = push[parts, Partial[ns[g], isums[g], sums[g], avgs[g], m2s[g], Cell[1, los[g], 0.0, '', 0, sys.bytes[0]], Cell[1, his[g], 0.0, '', 0, sys.bytes[0]], fps[g], Cell[1, fvs[g], 0.0, '', 0, sys.bytes[0]], lps[g], Cell[1, lvs[g], 0.0, '', 0, sys.bytes[0]]]]
     return parts
 
---- a column's kind as the first file's footer names it
+--- a column's kind as the files hold it together
 fn _kind_in[kinds, path, name]
     if name not in kinds
-        return error['batch: \'`path`\' holds no column \'`name`\'', 'magpie']
+        return error['batch: column \'`name`\' is in none of the files read', 'magpie']
     return kinds[name]
 
 --- the answer: a row per key in the keys' order, the key columns as they
@@ -1117,26 +1158,22 @@ fn asof_rows[paths, labels, keyed, time, asked, upto]
             label_at = push[label_at, 0]
     if len[paths] eq 0 or len[latest] eq 0
         return _joined_none[labels, asked]
-    --- the log's columns to bring, from the first path (the tail's pending
-    --- rows are read whole)
-    first_columns = slice[['x'], 0, 0]
-    if _pending_path[paths[0]]
-        df0 = sequencer.pending_at[paths[0]]
-        if not df0.ok
-            return error[df0.reason, 'magpie']
-        first_columns = df0.columns
-    else
-        first = fileformat.opened[paths[0]]
-        if not first.ok
-            return error[first.reason, 'magpie']
-        for c in first.footer.columns
-            first_columns = push[first_columns, c.name]
+    --- the log's columns to bring: every one its files hold (a file
+    --- written before the log's columns grew missing the newer ones' cells,
+    --- an int column beside a float one read as floats)
+    shape = sequencer.shape_of[paths]
+    if not shape.ok
+        return error[shape.reason, 'magpie']
+    kinds = _kinds_of[shape]
     bring = asked
     if len[asked] eq 0
         bring = slice[['x'], 0, 0]
-        for name in first_columns
+        for name in shape.names
             if name not in labels.columns and name ne '_pos'
                 bring = push[bring, name]
+    for name in concat[concat[keyed, bring], [time]]
+        if name not in kinds
+            return error['batch: column \'`name`\' is in none of the files read', 'magpie']
     needed = slice[['x'], 0, 0]
     for k in keyed
         needed = push[needed, k]
@@ -1147,37 +1184,29 @@ fn asof_rows[paths, labels, keyed, time, asked, upto]
             needed = push[needed, b]
     --- every group read, its rows for the labels' keys kept as candidates
     cands = map[]
-    file_kinds = []
     for fi in range[len[paths]]
         p = paths[fi]
         if _pending_path[p]
             df = sequencer.pending_at[p]
             if not df.ok
                 return error[df.reason, 'magpie']
-            for name in needed
-                if name not in df.columns
-                    return error['batch: \'`p`\' holds no column \'`name`\'', 'magpie']
-            kinds = slice[['x'], 0, 0]
-            for b in bring
-                kinds = push[kinds, cell_kind[df.`b`]]
-            file_kinds = push[file_kinds, kinds]
-            cands = _cands_of[df, keyed, time, bring, latest, upto, fi, cands]
+            fit = _fit_to[df, shape, needed]
+            if not fit.ok
+                return error['magpie: \'`p`\': `fit.reason`', 'magpie']
+            cands = _cands_of[fit, keyed, time, bring, latest, upto, fi, cands]
         else
             r = fileformat.opened[p]
             if not r.ok
                 return error[r.reason, 'magpie']
-            cols = fileformat.wanted[r, needed]
-            if not cols.ok
-                return error[cols.reason, 'magpie']
-            kinds = slice[['x'], 0, 0]
-            for b in bring
-                kinds = push[kinds, r.footer.columns[_column_at[r, b]].cells]
-            file_kinds = push[file_kinds, kinds]
+            cols = fileformat.held_of[r, needed]
             for g in range[len[r.footer.groups]]
                 df = fileformat.group_of[r, g, cols]
                 if not df.ok
                     return error[df.reason, 'magpie']
-                cands = _cands_of[df, keyed, time, bring, latest, upto, fi, cands]
+                fit = _fit_to[df, shape, needed]
+                if not fit.ok
+                    return error['magpie: \'`p`\': `fit.reason`', 'magpie']
+                cands = _cands_of[fit, keyed, time, bring, latest, upto, fi, cands]
     --- each label's pick: the newest candidate at or before its moment
     picks = []
     for i in range[nl]
@@ -1205,7 +1234,7 @@ fn asof_rows[paths, labels, keyed, time, asked, upto]
                 cells = push[cells, _none_cell[]]
             else
                 c = cands[label_key[i]][picks[i]]
-                kind = file_kinds[c.file][bi]
+                kind = kinds[name]
                 cells = push[cells, c.cells[bi]]
         out.`name` = _column_of[cells, kind]
     return out

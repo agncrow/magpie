@@ -31,6 +31,21 @@ files and sockets, `use memory` for the sequencer's state, which the
 process holds — as any package that needs it may. Its file format is its
 own.
 
+A log's columns grow, and each keeps the kind it was first written in.
+A batch may bring columns the log has not held and lack any but the
+log's keys: every read answers in the columns its files hold together,
+and a row written without a column is missing that cell. `batch`, `put`
+and `commit` refuse rows that hold a column in another kind than the
+log's — an int where the log holds floats, a vector of another width —
+with an error value naming the column and both kinds, and write nothing
+(`batch: column 'qty' holds float in the log at 'orders', and int in the
+rows put — a column keeps the kind it was first written in`). A log an
+earlier Magpie wrote, which kept no kind, may hold a column in two: a
+read that reaches both files answers an error value naming the column
+and the two files, where `frame.stack` had stopped the program, and the
+log takes no rows until its files agree. A column of ints in one file
+and floats in another is read as floats.
+
 [The Magpie book](https://agncrow.github.io/magpie/book/) is the tour:
 every write and read as a program with what it prints, the doors, the
 packages built on Magpie and the design. [REFERENCE.md](REFERENCE.md) has

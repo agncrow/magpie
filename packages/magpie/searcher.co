@@ -307,7 +307,8 @@ fn _part_of[path, column, query, atoms, stems]
         if not rows_of.ok
             return error[rows_of.reason, 'magpie']
         if column not in rows_of.columns
-            return error['batch: \'`path`\' holds no column \'`column`\'', 'magpie']
+            --- (rows without the column: nothing to find in them)
+            return Part[path, true, rows_of, -1, []]
         if cell_kind[rows_of.`column`] ne 'text'
             return error['batch: column \'`column`\' holds no text to search', 'magpie']
         one = []
@@ -318,7 +319,8 @@ fn _part_of[path, column, query, atoms, stems]
         return error[r.reason, 'magpie']
     c = _column_at[r, column]
     if c lt 0
-        return error['batch: \'`path`\' holds no column \'`column`\'', 'magpie']
+        --- (a file written before the column was: nothing to find in it)
+        return Part[path, false, frame.new[], -1, []]
     if r.footer.columns[c].cells ne 'text'
         return error['batch: column \'`column`\' holds no text to search', 'magpie']
     ents = fileformat.entries[r, c]
@@ -570,22 +572,10 @@ fn _runs_of[ix, t]
         return _constant_runs[ix, postings.with_prefix[ix, t.word]]
     return _constant_runs[ix, postings.within[ix, t.word, t.edits]]
 
---- the files' columns, a `score` and (where asked) a `snippet`, with no
---- rows
-fn _empty_scored[paths, with_snippet]
-    if len[paths] eq 0
-        f = frame.new[]
-        f.score = floats_column[[], sys.bytes[0]]
-        if with_snippet
-            f.snippet = text_column[sys.bytes[0], [], sys.bytes[0]]
-        return f
-    r = fileformat.opened[paths[0]]
-    if not r.ok
-        return error[r.reason, 'magpie']
-    every = fileformat.wanted[r, slice[['x'], 0, 0]]
-    if not every.ok
-        return error[every.reason, 'magpie']
-    g = fileformat.empty_of[r, every]
+--- the files' columns (`shape`, as `sequencer.shape_of` joins them), a
+--- `score` and (where asked) a `snippet`, with no rows
+fn _empty_scored[shape, with_snippet]
+    g = fileformat.empty_frame[shape]
     g.score = floats_column[[], sys.bytes[0]]
     if with_snippet
         g.snippet = text_column[sys.bytes[0], [], sys.bytes[0]]
@@ -665,14 +655,25 @@ fn search_rows[paths, column, words, k, stems, snippet]
         return error['batch: a search answers at most k rows, and k is `k`', 'magpie']
     query = terms_of[words, stems]
     atoms = _atoms_of[query]
-    if len[query] eq 0 or len[paths] eq 0
-        return _empty_scored[paths, snippet gt 0]
+    if len[paths] eq 0
+        return _empty_scored[fileformat.no_shape[], snippet gt 0]
+    --- (the answer's columns: every file's, whichever rows win)
+    shape = sequencer.shape_of[paths]
+    if not shape.ok
+        return error[shape.reason, 'magpie']
+    if len[query] eq 0
+        return _empty_scored[shape, snippet gt 0]
     parts = []
+    holding = false
     for p in paths
         part = _part_of[p, column, query, atoms, stems]
         if not part.ok
             return error[part.reason, 'magpie']
         parts = push[parts, part]
+        if part.column gte 0
+            holding = true
+    if not holding
+        return error['batch: column \'`column`\' is in none of the files read', 'magpie']
     --- pass one: the corpus
     n = 0
     total = 0
@@ -694,7 +695,7 @@ fn search_rows[paths, column, words, k, stems, snippet]
         if d ne 0
             none_held = false
     if n eq 0 or (none_held and not constant_only)
-        return _empty_scored[paths, snippet gt 0]
+        return _empty_scored[shape, snippet gt 0]
     avgdl = float[total] / float[n]
     idf = map[]
     for i in range[len[atoms]]
@@ -790,7 +791,7 @@ fn search_rows[paths, column, words, k, stems, snippet]
                         for row in keys[acc]
                             kept = _offered[kept, Scored[acc[row], _pos_at[positions, row], fi, g, row], k]
     if len[kept] eq 0
-        return _empty_scored[paths, snippet gt 0]
+        return _empty_scored[shape, snippet gt 0]
     --- the rows of the k best read, best first
     ranked = []
     for s in kept
@@ -804,7 +805,12 @@ fn search_rows[paths, column, words, k, stems, snippet]
         if not placed
             out = push[out, s]
         ranked = out
+    --- (the rows in the files' columns: a file written before the log's
+    --- columns grew is missing the newer ones' cells)
     rows = []
+    rows = push[rows, fileformat.empty_frame[shape]]
+    labels = slice[['x'], 0, 0]
+    labels = push[labels, 'the files read']
     scores = []
     snip_bytes = sys.bytes[0]
     snip_ends = []
@@ -826,17 +832,20 @@ fn search_rows[paths, column, words, k, stems, snippet]
                 fetched = set[fetched, at, got]
             one = _row_at[fetched[at], s.row]
         rows = push[rows, one]
+        labels = push[labels, part.path]
         scores = push[scores, s.score]
         if snippet gt 0
             cell = one.`column`
             doc = sys.text[text_bytes_of[cell, 0, 1], '']
             snip_bytes = concat[snip_bytes, sys.bytes[snippet_of[doc, query, snippet, stems]]]
             snip_ends = push[snip_ends, len[snip_bytes]]
-    stacked = frame.stack[rows]
-    stacked.score = floats_column[scores, sys.bytes[0]]
+    found = fileformat.stacked[rows, labels]
+    if not found.ok
+        return error[found.reason, 'magpie']
+    found.score = floats_column[scores, sys.bytes[0]]
     if snippet gt 0
-        stacked.snippet = text_column[snip_bytes, snip_ends, sys.bytes[0]]
-    return stacked
+        found.snippet = text_column[snip_bytes, snip_ends, sys.bytes[0]]
+    return found
 
 fn _fresh[dir]
     if exists[dir]

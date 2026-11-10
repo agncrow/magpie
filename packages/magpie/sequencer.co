@@ -32,10 +32,18 @@ use merger
 --- process was given), and why the last revision refused what it was
 --- asked (empty for none: a revision that cannot fail is handed the
 --- record, where one that can is handed a copy, so a put answers its
---- refusal here). The index and the image are held
+--- refusal here), and the columns the log holds — its files' and the
+--- rows pending, as one (`fileformat.joined_shape`), `_pos` left out —
+--- which every put is held to. The index and the image are held
 --- key by key beneath the name (`<dir>/#last/<key>`, `<dir>/#row/<key>`),
 --- so a revision copies only what it changes
-struct Tail [dir, keys, parts, next, has_image, template, failed, answer, flushing, refused]
+struct Tail [dir, keys, parts, next, has_image, template, failed, answer, flushing, refused, shape]
+
+--- what the log's files say: the last position over them (-1 for none),
+--- the columns they hold together but `_pos` (the kinds their footers
+--- name, a column of vectors the width its newest file says), and why
+--- they disagree — empty where they agree
+struct Survey [top, shape, conflict]
 
 --- a key's last position, as the index holds it
 struct Last [position]
@@ -60,7 +68,10 @@ fn _tails_name[]
 
 --- a tail not read from the disk yet
 fn _unread[name]
-    return Tail[name, slice[['x'], 0, 0], [], -1, false, frame.new[], '', -1, 0, '']
+    --- (the parts typed as frames here: a program that never puts reads
+    --- them all the same, at a flush or a read of the pending rows)
+    parts = slice[[frame.new[]], 0, 0]
+    return Tail[name, slice[['x'], 0, 0], parts, -1, false, frame.new[], '', -1, 0, '', fileformat.no_shape[]]
 
 --- the batch files and segments of the log: the manifest's segments, and
 --- every batch file a segment does not cover
@@ -89,19 +100,39 @@ fn _live_paths[dir]
                 paths = push[paths, '`dir`/`name`']
     return paths
 
---- the log's last position over its files, -1 for none
-fn _head_of[dir]
+--- a file of the log as a refusal names it: the log as the program named
+--- it, and the file's name
+fn _label_of[path, said]
+    pieces = split[path, '/']
+    last = pieces[len[pieces] - 1]
+    return '`said`/`last`'
+
+--- what the log's files say (`said` the log as the program named it, so
+--- a refusal names its files so): each footer read
+fn _surveyed[dir, said]
     paths = _live_paths[dir]
     if not paths.ok
         return error[paths.reason, 'magpie']
     top = -1
+    rs = []
+    shapes = []
+    labels = slice[['x'], 0, 0]
     for p in paths
         r = fileformat.opened[p]
         if not r.ok
             return error[r.reason, 'magpie']
         if r.footer.last gt top
             top = r.footer.last
-    return top
+        rs = push[rs, r]
+        shapes = push[shapes, fileformat.file_shape[r]]
+        labels = push[labels, _label_of[p, said]]
+    s = fileformat.joined_shape[shapes, labels]
+    if not s.ok
+        return Survey[top, fileformat.no_shape[], s.reason]
+    sized = fileformat.widths_from[s, rs]
+    if not sized.ok
+        return error[sized.reason, 'magpie']
+    return Survey[top, fileformat.shape_without[sized, '_pos'], '']
 
 --- the next batch number: past every batch file's and every segment's
 fn _next_number[dir]
@@ -123,20 +154,27 @@ fn _next_number[dir]
     return top + 1
 
 --- the tail read again from what the log holds: its keys from the
---- manifest, the next position past its head (another process, a restore
---- or a log made afresh at the path may have moved the head); the image
---- and the index let go where the image was built
-fn _reread[t]
+--- manifest, the next position past its head and the columns its files
+--- hold (another process, a restore or a log made afresh at the path may
+--- have moved them); the image and the index let go where the image was
+--- built. Refused for a log whose files hold a column in two kinds (an
+--- older Magpie took such rows): a put, `writing`, is told the log takes
+--- no rows while they disagree, a read the column and the two files
+fn _reread[t, said, writing]
     m = manifest.listed[t.dir]
     if not m.ok
         return error[m.reason, 'magpie']
-    top = _head_of[t.dir]
-    if not top.ok
-        return error[top.reason, 'magpie']
+    s = _surveyed[t.dir, said]
+    if not s.ok
+        return error[s.reason, 'magpie']
+    if len[s.conflict] gt 0
+        if writing
+            return error['batch: the log at \'`said`\' takes no rows while its files disagree: `s.conflict`', 'magpie']
+        return error['magpie: `s.conflict`', 'magpie']
     if t.has_image
         forget['`t.dir`/#last']
         forget['`t.dir`/#row']
-    return Tail[t.dir, m.keys, t.parts, top + 1, false, frame.new[], t.failed, t.answer, t.flushing, '']
+    return Tail[t.dir, m.keys, t.parts, s.top + 1, false, frame.new[], t.failed, t.answer, t.flushing, '', s.shape]
 
 --- whether cell `i` is present, by the bitmap
 fn _present[present, i]
@@ -245,11 +283,16 @@ fn _parsed[kind, value]
         return error['\'`value`\' is no bool', 'magpie']
     return Cell[4, 0, 0.0, value]
 
---- the rows pending, one frame with `_pos`
+--- the rows pending, one frame with `_pos`: parts of other columns
+--- stacked in the columns they hold together, each missing the cells it
+--- lacks (`fileformat.stacked`)
 fn _pending_frame[t]
     if len[t.parts] eq 1
         return t.parts[0]
-    return frame.stack[t.parts]
+    labels = slice[['x'], 0, 0]
+    for p in t.parts
+        labels = push[labels, 'the rows pending']
+    return fileformat.stacked[t.parts, labels]
 
 --- how many rows are pending
 fn _pending_count[t]
@@ -258,66 +301,97 @@ fn _pending_count[t]
         n = n + len[p]
     return n
 
---- the frame's row with the image's columns, as the image keeps a row
---- (the row as it is where it lacks one of them)
-fn _as_image_row[row, template]
-    if len[template.columns] eq 0
-        return row
-    for c in template.columns
-        if c not in row.columns
-            return row
-    return frame.select[row, template.columns]
+--- the columns a row of the image holds: the log's, and `_pos`
+fn _row_shape[s]
+    return fileformat.shape_with[s, '_pos', 'int']
+
+--- why the rows put do not fit the columns the log holds (`s`), empty
+--- where they do: a column the log holds in another kind — an int is no
+--- float, and a column keeps the kind it was first written in — or as
+--- vectors of another width. A column the log lacks fits (the log's
+--- columns grow), and so does a column a put lacks (its cells missing)
+fn _unfit[s, brought, said]
+    for i in range[len[brought.names]]
+        name = brought.names[i]
+        kind = brought.kinds[i]
+        at = -1
+        for j in range[len[s.names]]
+            if s.names[j] eq name
+                at = j
+        if at gte 0
+            had = s.kinds[at]
+            if kind ne had
+                return 'batch: column \'`name`\' holds `had` in the log at \'`said`\', and `kind` in the rows put — a column keeps the kind it was first written in'
+            had_w = s.widths[at]
+            w = brought.widths[i]
+            if kind eq 'vector' and had_w gt 0 and w gt 0 and had_w ne w
+                return 'batch: column \'`name`\' holds vectors of width `had_w` in the log at \'`said`\', and of width `w` in the rows put — a column keeps the kind it was first written in'
+    return ''
 
 --- the tail as it was, refusing what it was asked for the reason given
 fn _refused[t, why]
-    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, t.answer, t.flushing, why]
+    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, t.answer, t.flushing, why, t.shape]
 
 --- the tail with rows appended: the next positions given as they
---- arrive, the index and the image kept current; `answer` the first
---- position. Refused, changing nothing (`refused` says why): no rows, a
---- frame already holding `_pos`, other columns than the rows pending, a
---- key column missing
-fn _appended[t, f]
+--- arrive, the index and the image kept current, the log's columns grown
+--- by any the rows bring; `answer` the first position. Refused, changing
+--- nothing (`refused` says why): no rows, a frame already holding `_pos`,
+--- a column the log holds in another kind (`_unfit`; `said` names the log
+--- as the program did), a log whose files disagree, a key column missing
+fn _appended[t, f, said]
     n = len[f]
     if n eq 0
         return _refused[t, 'batch: a put holds at least one row']
     if '_pos' in f.columns
         return _refused[t, 'batch: the frame already holds a column \'_pos\', which the log adds']
     held = t
-    if len[t.parts] gt 0
-        had = slice[['x'], 0, 0]
-        for c in t.parts[0].columns
-            if c ne '_pos'
-                had = push[had, c]
-        if had ne f.columns
-            return _refused[t, 'batch: the rows put hold other columns than the rows pending — flush first']
-    else
-        --- (nothing pending: the next position is read off the disk again)
-        again = _reread[t]
+    if len[t.parts] eq 0
+        --- (nothing pending: the next position and the log's columns are
+        --- read off the disk again)
+        again = _reread[t, said, true]
         if not again.ok
             return _refused[t, again.reason]
         held = again
+    brought = fileformat.frame_shape[f]
+    why = _unfit[held.shape, brought, said]
+    if len[why] gt 0
+        return _refused[t, why]
+    both = []
+    both = push[both, held.shape]
+    both = push[both, brought]
+    named = slice[['x'], 0, 0]
+    named = push[push[named, 'the log at \'`said`\''], 'the rows put']
+    grown = fileformat.joined_shape[both, named]
+    if not grown.ok
+        return _refused[t, 'batch: `grown.reason`']
     first = held.next
     positions = []
     for i in range[n]
         positions = push[positions, first + i]
     numbered = f
     numbered._pos = ints_column[positions, sys.bytes[0]]
+    --- (the image's columns grown with the log's, its rows fitted to them)
+    template = held.template
+    if held.has_image
+        template = fileformat.fitted[held.template, _row_shape[grown]]
+        if not template.ok
+            return _refused[t, 'batch: `template.reason`']
     if len[held.keys] gt 0
         texts = _keys_of[numbered, held.keys]
         if not texts.ok
             return _refused[t, texts.reason]
+        row_shape = fileformat.frame_shape[template]
         for i in range[n]
             remember['`held.dir`/#last/`texts[i]`', Last[first + i]]
             if held.has_image
                 one = frame.head[frame.tail[numbered, n - i], 1]
-                remember['`held.dir`/#row/`texts[i]`', Newest[_as_image_row[one, held.template]]]
+                remember['`held.dir`/#row/`texts[i]`', Newest[fileformat.fitted[one, row_shape]]]
     parts = push[held.parts, numbered]
-    return Tail[held.dir, held.keys, parts, first + n, held.has_image, held.template, held.failed, first, held.flushing, '']
+    return Tail[held.dir, held.keys, parts, first + n, held.has_image, template, held.failed, first, held.flushing, '', grown]
 
 --- the tail with its flush's failure answered
 fn _cleared[t]
-    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, '', t.answer, t.flushing, '']
+    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, '', t.answer, t.flushing, '', t.shape]
 
 --- refused where the last flush asked for failed: its reason answered
 --- once, the failure let go
@@ -350,14 +424,21 @@ fn _cut_pending[]
 --- visible to this process at once, flushed by the work asked for (a
 --- `later` of every tail's flush) or at `flush_rows`; answers the first
 --- position. Refused: the last flush failed, no rows, a frame holding
---- `_pos`, other columns than the rows pending, a key column missing
+--- `_pos`, a column the log holds in another kind (an int is no float),
+--- a log whose files disagree, a key column missing. Columns the log
+--- lacks are taken — the log's columns grow — and a column the rows lack
+--- is missing cells in them
 fn put_rows[dir, f]
     name = canonical[dir]
     clear = _failed_flush[name, dir]
     if not clear.ok
         return error[clear.reason, 'magpie']
     revised = revise[_tails_name[], Tails[slice[['x'], 0, 0]], _noted, name]
-    t = revise[name, _unread[name], _appended, f]
+    --- (the log as the program named it, as text: a refusal names it so,
+    --- and a parameter handed on through `revise` is typed by what it is
+    --- handed, which a caller's parameter may not yet be)
+    said = '`dir`'
+    t = revise[name, _unread[name], _appended, f, said]
     if len[t.refused] gt 0
         return error[t.refused, 'magpie']
     cut = _cut_pending[]
@@ -380,11 +461,11 @@ fn _next_claim[]
 --- and then the rest
 fn _claimed[t, claim]
     if t.flushing gt 0
-        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, -1, t.flushing, '']
+        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, -1, t.flushing, '', t.shape]
     k = len[t.parts]
     if k eq 0
-        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, 0, 0, '']
-    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, k, claim, '']
+        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, 0, 0, '', t.shape]
+    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, k, claim, '', t.shape]
 
 --- the parts a flush claimed — every part the tail held when it claimed
 --- them, as `t` holds them — written as one batch file and flushed to the
@@ -402,6 +483,8 @@ fn _claimed[t, claim]
 --- directory has; a number another writer took first is tried again
 fn _written[t, name, claim]
     whole = _pending_frame[t]
+    if not whole.ok
+        return error[whole.reason, 'magpie']
     first = t.next - len[whole]
     --- (the rows sorted by the keys, arrival order kept among equals, each
     --- with its position)
@@ -446,15 +529,15 @@ fn _written[t, name, claim]
 --- failed (`refused` saying why, as for -1)
 fn _committed[t, claim, part, path]
     if t.flushing ne claim
-        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, 0, t.flushing, '']
+        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, 0, t.flushing, '', t.shape]
     --- the sys row, qualified: a package's code shares the program's names,
     --- and kg's own `link` (an edge) had taken this call
     linked = sys.link[part, path]
     if linked.ok
-        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, 1, t.flushing, '']
+        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, 1, t.flushing, '', t.shape]
     if exists[path]
-        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, -1, t.flushing, 'batch: \'`path`\' exists — it was written already']
-    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, -2, t.flushing, 'batch: cannot place \'`path`\': `linked.reason`']
+        return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, -1, t.flushing, 'batch: \'`path`\' exists — it was written already', t.shape]
+    return Tail[t.dir, t.keys, t.parts, t.next, t.has_image, t.template, t.failed, -2, t.flushing, 'batch: cannot place \'`path`\': `linked.reason`', t.shape]
 
 --- the tail after its flush: the `k` parts claimed let go where they were
 --- written, kept where the write failed and its reason kept for the next
@@ -470,7 +553,7 @@ fn _settled[t, k, why, claim]
         parts = slice[t.parts, k, len[t.parts]]
     else
         failed = why
-    return Tail[t.dir, t.keys, parts, t.next, t.has_image, t.template, failed, t.answer, 0, '']
+    return Tail[t.dir, t.keys, parts, t.next, t.has_image, t.template, failed, t.answer, 0, '', t.shape]
 
 --- a log's pending rows flushed: claimed under the tail's lock, written
 --- outside it, linked and let go under it — a flush in flight waited for
@@ -538,6 +621,8 @@ fn pending_rows[dir, first, last]
     n = _pending_count[t]
     if n gt 0 and t.next - n lte first and first lt t.next
         whole = _pending_frame[t]
+        if not whole.ok
+            return error[whole.reason, 'magpie']
         if first eq t.next - n and last gte t.next - 1
             return whole
         --- (a listing that began past a flush's file, the rows it wrote
@@ -555,13 +640,16 @@ fn pending_rows[dir, first, last]
             return fileformat.groups_of[r, all_groups, fileformat.wanted[r, slice[['x'], 0, 0]]]
     return error['batch: the rows `first`..`last` of \'`dir`\' are neither pending nor in a file', 'magpie']
 
---- the log's rows in parts — the files' and the pending ones — read for
---- the image
-fn _table_of[t]
+--- the log's rows — the files' and the pending ones — read for the
+--- image, as one frame in the columns they hold together (none where the
+--- log holds no rows); an error value where a column holds two kinds,
+--- naming it and the two files
+fn _table_of[t, said]
     paths = _live_paths[t.dir]
     if not paths.ok
         return error[paths.reason, 'magpie']
     parts = []
+    labels = slice[['x'], 0, 0]
     for p in paths
         r = fileformat.opened[p]
         if not r.ok
@@ -572,18 +660,25 @@ fn _table_of[t]
             return error[rows.reason, 'magpie']
         if len[rows] gt 0
             parts = push[parts, rows]
+            labels = push[labels, _label_of[p, said]]
     if len[t.parts] gt 0
-        parts = push[parts, _pending_frame[t]]
-    return parts
+        pending = _pending_frame[t]
+        if not pending.ok
+            return error[pending.reason, 'magpie']
+        parts = push[parts, pending]
+        labels = push[labels, 'the rows pending']
+    if len[parts] eq 0
+        return frame.new[]
+    return fileformat.stacked[parts, labels]
 
 --- the tail with its image built: the log's rows read (inside the
 --- tail's lock, which holds the pending rows), each key's newest row and
 --- its position held beneath the name; refused for a log with no keys
 --- (`refused` says why, the tail as it was)
-fn _imaged[t]
+fn _imaged[t, said]
     held = t
     if t.next lt 0
-        again = _reread[t]
+        again = _reread[t, said, false]
         if not again.ok
             return _refused[t, again.reason]
         held = again
@@ -591,12 +686,21 @@ fn _imaged[t]
         return held
     if len[held.keys] eq 0
         return _refused[t, 'batch: the log at \'`held.dir`\' has no keys, so no row is the newest of one']
-    parts = _table_of[held]
-    if not parts.ok
-        return _refused[t, parts.reason]
-    if len[parts] eq 0
-        return Tail[held.dir, held.keys, held.parts, held.next, true, frame.new[], held.failed, held.answer, held.flushing, '']
-    table = frame.stack[parts]
+    table = _table_of[held, said]
+    if not table.ok
+        return _refused[t, table.reason]
+    if len[table.columns] eq 0
+        return Tail[held.dir, held.keys, held.parts, held.next, true, frame.new[], held.failed, held.answer, held.flushing, '', held.shape]
+    --- (the log's columns as the rows read hold them: another process may
+    --- have written columns since the tail was read)
+    both = []
+    both = push[both, held.shape]
+    both = push[both, fileformat.shape_without[fileformat.frame_shape[table], '_pos']]
+    named = slice[['x'], 0, 0]
+    named = push[push[named, 'the log at \'`said`\''], 'its rows']
+    shape = fileformat.joined_shape[both, named]
+    if not shape.ok
+        return _refused[t, 'magpie: `shape.reason`']
     if len[table] gt 1
         table = sort[table, '_pos']
     n = len[table]
@@ -613,7 +717,7 @@ fn _imaged[t]
             i = newest[key]
             remember['`held.dir`/#last/`key`', Last[positions[i]]]
             remember['`held.dir`/#row/`key`', Newest[frame.head[frame.tail[table, n - i], 1]]]
-    return Tail[held.dir, held.keys, held.parts, held.next, true, frame.head[table, 0], held.failed, held.answer, held.flushing, '']
+    return Tail[held.dir, held.keys, held.parts, held.next, true, frame.head[table, 0], held.failed, held.answer, held.flushing, '', shape]
 
 --- the key text of the values asked, read as the image's key columns
 fn _asked_key[t, asked]
@@ -632,24 +736,27 @@ fn _asked_key[t, asked]
 
 --- `newest_row[dir, asked]`: the newest row of the key (the image, built
 --- from the log when first asked, kept current by every put), as a frame
---- of one row or none
+--- of one row or none, in the columns the log holds now (a row put before
+--- the log's columns grew missing the cells of the ones it lacks)
 fn newest_row[dir, asked]
     name = canonical[dir]
-    t = revise[name, _unread[name], _imaged]
+    said = '`dir`'
+    t = revise[name, _unread[name], _imaged, said]
     if len[t.refused] gt 0
         return error[t.refused, 'magpie']
     key = _asked_key[t, asked]
     if not key.ok
         return error[key.reason, 'magpie']
     found = recall['`name`/#row/`key`', Newest[t.template]]
-    return found.row
+    return fileformat.fitted[found.row, fileformat.frame_shape[t.template]]
 
 --- `last_position[dir, asked]`: the last position at which the key was
 --- written, as the index knows it (the pending rows, and the files once
 --- the image is built); -1 where it does not
 fn last_position[dir, asked]
     name = canonical[dir]
-    t = revise[name, _unread[name], _imaged]
+    said = '`dir`'
+    t = revise[name, _unread[name], _imaged, said]
     if len[t.refused] gt 0
         return error[t.refused, 'magpie']
     key = _asked_key[t, asked]
@@ -657,6 +764,32 @@ fn last_position[dir, asked]
         return error[key.reason, 'magpie']
     found = recall['`name`/#last/`key`', Last[-1]]
     return found.position
+
+--- `shape_of[paths]`: the columns the files and the pending rows the
+--- paths name hold together (`fileformat.joined_shape`, each named by its
+--- path) — a reader answers in them whichever rows it finds, so a file
+--- written before the log's columns grew is missing the newer ones'
+--- cells; an error value of kind `'magpie'` where a column holds two
+--- kinds (an older Magpie wrote such logs), naming it and two paths
+fn shape_of[paths]
+    shapes = []
+    labels = slice[['x'], 0, 0]
+    for p in paths
+        if '/.pending' in p
+            rows = pending_at[p]
+            if not rows.ok
+                return error[rows.reason, 'magpie']
+            shapes = push[shapes, fileformat.frame_shape[rows]]
+        else
+            r = fileformat.opened[p]
+            if not r.ok
+                return error[r.reason, 'magpie']
+            shapes = push[shapes, fileformat.file_shape[r]]
+        labels = push[labels, p]
+    s = fileformat.joined_shape[shapes, labels]
+    if not s.ok
+        return error['magpie: `s.reason`', 'magpie']
+    return s
 
 --- `forget_log[dir]`: the log's tail let go, its pending rows dropped: a
 --- log removed from under the process starts afresh at the path
@@ -688,19 +821,39 @@ fn _scratch[dir]
     declared = manifest.declare[dir, ['id'], none, none]
     return dir
 
+--- rows written as the log's next batch file the way a Magpie before the
+--- kinds were held wrote them — no kind held to, so a log's files may
+--- hold a column in two kinds; answers the first position
+fn _written_unchecked[dir, df]
+    number = _next_number[dir]
+    first = 0
+    s = _surveyed[canonical[dir], dir]
+    if s.ok
+        first = s.top + 1
+    numbered = df
+    positions = []
+    for i in range[len[df]]
+        positions = push[positions, first + i]
+    numbered._pos = ints_column[positions, sys.bytes[0]]
+    m = manifest.listed[dir]
+    data = merger.numbered_bytes[dir, numbered, first, m.keys, slice[['x'], 0, 0]]
+    kept = store['`dir`/`manifest.batch_named[number]`', data]
+    gone = forget_log[dir]
+    return first
+
 --- a flush claims what is pending, and a second claim waits for it; a
 --- put meanwhile joins the next flush; the claimed parts are let go once
 --- written, and kept, with the reason, where the write failed
 test a_flush_claims_writes_and_lets_go[]
     dir = _scratch['target/crow_tail_c']
-    t = _appended[_unread[canonical[dir]], frame.new[id = [1], qty = [10]]]
+    t = _appended[_unread[canonical[dir]], frame.new[id = [1], qty = [10]], dir]
     assert[len[t.refused] eq 0]
     nothing = _claimed[_unread[canonical[dir]], 7]
     assert[nothing.answer eq 0 and nothing.flushing eq 0]
     claimed = _claimed[t, 7]
     assert[claimed.answer eq 1 and claimed.flushing eq 7]
     assert[_claimed[claimed, 8].answer eq -1]
-    more = _appended[claimed, frame.new[id = [2], qty = [20]]]
+    more = _appended[claimed, frame.new[id = [2], qty = [20]], dir]
     assert[len[more.parts] eq 2 and more.answer eq 1]
     done = _settled[more, 1, '', 7]
     assert[len[done.parts] eq 1 and done.flushing eq 0 and len[done.failed] eq 0]
@@ -709,7 +862,7 @@ test a_flush_claims_writes_and_lets_go[]
     --- (another flush's claim settles nothing)
     other = _settled[more, 1, '', 8]
     assert[len[other.parts] eq 2 and other.flushing eq 7]
-    refused = _appended[more, frame.new[qty = [1]]]
+    refused = _appended[more, frame.new[qty = [1]], dir]
     assert[len[refused.refused] gt 0 and len[refused.parts] eq 2]
     rm[dir]
 
@@ -721,14 +874,14 @@ test a_flush_claims_writes_and_lets_go[]
 test a_flush_of_a_removed_log_writes_nothing[]
     dir = _scratch['target/crow_tail_r']
     name = canonical[dir]
-    remember[name, _appended[_unread[name], frame.new[id = [1, 2], qty = [10, 20]]]]
+    remember[name, _appended[_unread[name], frame.new[id = [1, 2], qty = [10, 20]], dir]]
     claim = _next_claim[]
     t = revise[name, _unread[name], _claimed, claim]
     assert[t.answer eq 1 and t.flushing eq claim]
     --- (the log removed and made again, with a row of its own, while the
     --- flush runs)
     made = _scratch[dir]
-    again = revise[name, _unread[name], _appended, frame.new[id = [3], qty = [30]]]
+    again = revise[name, _unread[name], _appended, frame.new[id = [3], qty = [30]], dir]
     assert[len[again.refused] eq 0 and again.answer eq 0]
     assert[_written[t, name, claim] eq -1]
     settled = revise[name, _unread[name], _settled, 1, '', claim]
@@ -774,3 +927,44 @@ test the_tail_numbers_flushes_and_follows[]
     again = _scratch[dir]
     assert[put_rows[dir, frame.new[id = [7], qty = [70]]] eq 0]
     assert[last_position[dir, ['7']] eq 0]
+
+--- a put holds each column to the kind the log holds it in — an int is no
+--- float — refusing, with the column and both kinds named, and changing
+--- nothing; columns the log lacks are taken, and a column a put lacks is
+--- missing cells there: the log's columns grow, and the image's rows with
+--- them. A log an older Magpie wrote a column into in two kinds takes no
+--- rows, and its image is refused, naming the column and the two files
+test a_put_keeps_each_columns_kind_and_the_columns_grow[]
+    dir = _scratch['target/crow_tail_g']
+    assert[put_rows[dir, frame.new[id = [1], qty = [10]]] eq 0]
+    e = put_rows[dir, frame.new[id = [2], qty = [2.5]]]
+    assert[e.kind eq 'magpie']
+    assert[e.reason eq 'batch: column \'qty\' holds int in the log at \'target/crow_tail_g\', and float in the rows put — a column keeps the kind it was first written in']
+    done = flush_rows[dir]
+    assert[put_rows[dir, frame.new[id = [2], qty = ['20']]].reason eq 'batch: column \'qty\' holds int in the log at \'target/crow_tail_g\', and text in the rows put — a column keeps the kind it was first written in']
+    assert[put_rows[dir, frame.new[id = [2], note = ['b'], qty = [20]]] eq 1]
+    assert[put_rows[dir, frame.new[id = [3]]] eq 2]
+    one = newest_row[dir, ['1']]
+    assert[one.columns eq ['id', 'note', 'qty', '_pos']]
+    assert[one.qty eq [10] and byte[present_of[one.note, 0, 1], 0] eq 0]
+    assert[newest_row[dir, ['2']].note eq ['b']]
+    assert[put_rows[dir, frame.new[id = [4], note = ['d'], qty = [40], flag = [true]]] eq 3]
+    assert[newest_row[dir, ['4']].columns eq ['id', 'note', 'qty', 'flag', '_pos']]
+    assert[newest_row[dir, ['1']].columns eq ['id', 'note', 'qty', 'flag', '_pos']]
+    done = flush_rows[dir]
+    total = 0
+    for p in ls[dir]
+        if manifest.number_of[p] gte 0
+            total = total + fileformat.opened['`dir`/`p`'].footer.rows
+    assert[total eq 4]
+    assert[put_rows[dir, frame.new[id = [5], note = [5]]].reason eq 'batch: column \'note\' holds text in the log at \'target/crow_tail_g\', and int in the rows put — a column keeps the kind it was first written in']
+    rm[dir]
+    --- (a log an older Magpie wrote, holding no kind to)
+    old = _scratch['target/crow_tail_o']
+    first = _written_unchecked[old, frame.new[id = [1], pnl = ['1.5']]]
+    first = _written_unchecked[old, frame.new[id = [2], pnl = [2.5]]]
+    assert[first eq 1]
+    refused = put_rows[old, frame.new[id = [3], pnl = [3.5]]]
+    assert[refused.reason eq 'batch: the log at \'target/crow_tail_o\' takes no rows while its files disagree: column \'pnl\' holds text in \'target/crow_tail_o/000000000000.batch\' and float in \'target/crow_tail_o/000000000001.batch\'']
+    assert[newest_row[old, ['1']].reason eq 'magpie: column \'pnl\' holds text in \'target/crow_tail_o/000000000000.batch\' and float in \'target/crow_tail_o/000000000001.batch\'']
+    rm[old]
