@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><link rel="icon" type="image/svg+xml" href="magpie.svg?v=cb28bf38"><link rel="icon" href="favicon.ico?v=cb28bf38" sizes="32x32"><link rel="apple-touch-icon" href="apple-touch-icon.png?v=cb28bf38">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Port to Crow · Magpie</title>
+<style>:root{--crow-bg:#f6f7f9;--crow-surface:#ffffff;--crow-text:#1b222b;--crow-muted:#5d6773;--crow-border:#dce1e8;--crow-accent:#9a6519;--crow-up:#177a4e;--crow-down:#bd3a3a;--crow-series-2:#2f6fb5;--crow-series-3:#7c4dbd;--crow-series-4:#178a8a;--crow-series-5:#c23d7a;--crow-series-6:#d2701a}
+@media (prefers-color-scheme:dark){:root{--crow-bg:#0f1317;--crow-surface:#171d24;--crow-text:#e6e9ec;--crow-muted:#8b95a1;--crow-border:#28313c;--crow-accent:#e8a940;--crow-up:#3dbd85;--crow-down:#e06060;--crow-series-2:#5b9cf0;--crow-series-3:#a884ee;--crow-series-4:#3cc0c0;--crow-series-5:#ee6fa8;--crow-series-6:#f09a4a}}
+:root[data-theme="dark"]{--crow-bg:#0f1317;--crow-surface:#171d24;--crow-text:#e6e9ec;--crow-muted:#8b95a1;--crow-border:#28313c;--crow-accent:#e8a940;--crow-up:#3dbd85;--crow-down:#e06060;--crow-series-2:#5b9cf0;--crow-series-3:#a884ee;--crow-series-4:#3cc0c0;--crow-series-5:#ee6fa8;--crow-series-6:#f09a4a}
+:root[data-theme="light"]{--crow-bg:#f6f7f9;--crow-surface:#ffffff;--crow-text:#1b222b;--crow-muted:#5d6773;--crow-border:#dce1e8;--crow-accent:#9a6519;--crow-up:#177a4e;--crow-down:#bd3a3a;--crow-series-2:#2f6fb5;--crow-series-3:#7c4dbd;--crow-series-4:#178a8a;--crow-series-5:#c23d7a;--crow-series-6:#d2701a}
+*{box-sizing:border-box}
+body{margin:0 auto;max-width:860px;padding:2.2rem 1.25rem 4rem;background:var(--crow-bg);color:var(--crow-text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.55}
+h1{font-size:1.45rem;font-weight:650;letter-spacing:-0.015em;margin:0 0 0.25rem}
+h2{font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--crow-muted);margin:2.2rem 0 0.7rem}
+h3{font-size:0.95rem;margin:1.2rem 0 0.4rem}
+p{margin:0.4rem 0}
+a{color:var(--crow-accent)}
+button{font:inherit;font-size:0.92rem;color:var(--crow-text);background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:4px;padding:0.42rem 0.95rem;cursor:pointer;transition:border-color 120ms ease,background 120ms ease}
+button:hover{border-color:var(--crow-accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--crow-accent);outline-offset:1px}
+@media (prefers-reduced-motion:reduce){button{transition:none}}
+label{color:var(--crow-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:0.5rem}
+input,select,textarea{font:inherit;font-size:0.92rem;color:var(--crow-text);background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:4px;padding:0.4rem 0.6rem}
+input{width:9.5rem}
+pre,code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:0.9em}
+table{border-collapse:collapse;width:100%;font-size:0.92rem}
+th{text-align:left;font-weight:600;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--crow-muted);border-bottom:1px solid var(--crow-border);padding:0.45rem 0.9rem 0.45rem 0}
+td{border-bottom:1px solid var(--crow-border);padding:0.5rem 0.9rem 0.5rem 0;font-variant-numeric:tabular-nums}
+th button{font:inherit;text-transform:inherit;letter-spacing:inherit;color:inherit;background:none;border:0;border-radius:0;padding:0;cursor:pointer}
+th[aria-sort="ascending"] button::after{content:" ▲"}
+th[aria-sort="descending"] button::after{content:" ▼"}
+td.crow-pager{border-bottom:0;text-align:right;color:var(--crow-muted)}
+[data-crow-click][tabindex]:focus-visible{outline:2px solid var(--crow-accent);outline-offset:-2px}
+@media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+td.crow-pager span{margin:0 0.75rem}
+td.crow-refused{color:var(--crow-down)}
+.controls{display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin:0.9rem 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.6rem;margin:1.1rem 0}
+.card{background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:4px;padding:0.75rem 0.9rem}
+.card h3{margin:0 0 0.3rem;font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--crow-muted)}
+.card p{margin:0}
+header{display:flex;align-items:center;padding:0.5rem 0.9rem;background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:4px}
+td.actions{white-space:nowrap}td.actions button{padding:0.15rem 0.55rem;font-size:0.8rem;margin-right:0.35rem}
+button.primary{background:var(--crow-accent);border-color:var(--crow-accent);color:var(--crow-bg);font-weight:600}
+button.primary:hover{filter:brightness(1.08)}
+.up{color:var(--crow-up)}
+.down{color:var(--crow-down)}
+.stale{color:var(--crow-muted)}
+tr[data-crow-click]{cursor:pointer}
+tr[data-crow-click]:hover td{background:color-mix(in srgb,var(--crow-accent) 10%,transparent)}
+tr.marked td{background:color-mix(in srgb,var(--crow-up) 14%,transparent)}
+.crow-slider input{width:16rem;padding:0;border:0;background:transparent}
+.crow-field{display:inline-flex;align-items:center;gap:0.4rem}
+.crow-field:has(textarea){align-items:flex-start}
+hr.divider{border:0;border-top:1px solid var(--crow-border);margin:0;width:100%;height:0}
+.row > hr.divider{width:0;height:auto;align-self:stretch;border-top:0;border-left:1px solid var(--crow-border);min-height:1.5em}
+details{border:1px solid var(--crow-border);border-radius:4px;background:var(--crow-surface);padding:0.5rem 0.75rem}
+summary{cursor:pointer;font-weight:600;list-style:none;display:flex;align-items:center;gap:0.5rem}
+summary::-webkit-details-marker{display:none}
+summary::before{content:'';width:0.4em;height:0.4em;border-right:2px solid var(--crow-muted);border-bottom:2px solid var(--crow-muted);transform:rotate(-45deg);transition:transform 120ms ease;flex:none}
+details[open] > summary::before{transform:rotate(45deg)}
+details > :not(summary){margin-top:0.5rem}
+.dropdown{position:relative;display:inline-block;border:0;padding:0;background:transparent}
+.dropdown > summary{border:1px solid var(--crow-border);border-radius:4px;padding:0.42rem 0.95rem;background:var(--crow-surface);font-weight:400;font-size:0.92rem}
+.dropdown > summary::before{order:2;margin-left:0.25rem}
+.dropdown > :not(summary){position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:12rem;margin:0;padding:0.35rem;background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.dropdown[data-side="right"] > :not(summary){left:auto;right:0}
+.dropdown > :not(summary) > button,.dropdown > :not(summary) > a{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:3px;padding:0.4rem 0.6rem;color:var(--crow-text);text-decoration:none}
+.dropdown > :not(summary) > button:hover,.dropdown > :not(summary) > a:hover{background:color-mix(in srgb,var(--crow-accent) 12%,transparent)}
+.modal{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:1rem}
+.modal[data-open="true"]{display:flex}
+.modal > *{background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:6px;padding:1.25rem;max-width:min(560px,100%);max-height:90vh;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.drawer{position:fixed;top:0;bottom:0;right:0;z-index:100;width:min(420px,92vw);background:var(--crow-surface);border-left:1px solid var(--crow-border);box-shadow:-6px 0 18px rgba(0,0,0,.18);padding:1.25rem;overflow:auto;display:flex;flex-direction:column;gap:0.75rem;transform:translateX(105%);visibility:hidden;transition:transform 160ms ease,visibility 160ms}
+.drawer[data-open="true"]{transform:none;visibility:visible}
+.drawer[data-side="left"]{left:0;right:auto;border-left:0;border-right:1px solid var(--crow-border);box-shadow:6px 0 18px rgba(0,0,0,.18);transform:translateX(-105%)}
+.drawer[data-side="left"][data-open="true"]{transform:none}
+.toast{display:none;position:fixed;right:24px;bottom:24px;z-index:110;max-width:min(420px,92vw);background:var(--crow-surface);color:var(--crow-text);border:1px solid var(--crow-border);border-left:4px solid var(--crow-accent);border-radius:4px;padding:0.7rem 1rem;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.toast[style*="color:"]{border-left-color:currentColor}
+.toast[data-open="true"]{display:block;animation:crow-toast 4s ease forwards}
+@keyframes crow-toast{0%{opacity:0;transform:translateY(8px)}8%{opacity:1;transform:none}85%{opacity:1}100%{opacity:0;visibility:hidden}}
+.crow-check{display:inline-flex;align-items:center;gap:0.5rem;color:var(--crow-text);font-size:0.92rem;cursor:pointer}
+.crow-check input{width:auto;margin:0;accent-color:var(--crow-accent)}
+.crow-toggle input{appearance:none;-webkit-appearance:none;width:2.2rem;height:1.25rem;border-radius:999px;background:var(--crow-border);position:relative;padding:0;border:0;transition:background 120ms ease;cursor:pointer}
+.crow-toggle input::after{content:'';position:absolute;top:2px;left:2px;width:calc(1.25rem - 4px);height:calc(1.25rem - 4px);border-radius:50%;background:var(--crow-surface);box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform 120ms ease}
+.crow-toggle input:checked{background:var(--crow-accent)}
+.crow-toggle input:checked::after{transform:translateX(0.95rem)}
+.crow-radio{display:inline-flex;gap:1rem;flex-wrap:wrap;align-items:center}
+.crow-radio label{color:var(--crow-text);cursor:pointer}
+.crow-radio input{width:auto;margin:0;accent-color:var(--crow-accent)}
+.crow-tabs{display:flex;gap:0;border-bottom:1px solid var(--crow-border);align-items:stretch}
+.crow-tabs label{cursor:pointer;padding:0.5rem 0.9rem;margin-bottom:-1px;border-bottom:2px solid transparent;color:var(--crow-muted);font-size:0.92rem;font-weight:500;white-space:nowrap;position:relative}
+.crow-tabs label[aria-selected="true"]{color:var(--crow-text);border-bottom-color:var(--crow-accent)}
+.crow-tabs input{position:absolute;opacity:0;width:0;height:0;margin:0;padding:0;border:0}
+progress.crow-progress{display:block;width:100%;height:0.5rem;appearance:none;-webkit-appearance:none;border:0;border-radius:999px;overflow:hidden;background:var(--crow-border);accent-color:var(--crow-accent)}
+progress.crow-progress::-webkit-progress-bar{background:var(--crow-border)}
+progress.crow-progress::-webkit-progress-value{background:var(--crow-accent)}
+progress.crow-progress::-moz-progress-bar{background:var(--crow-accent)}
+svg.icon{display:inline-block;vertical-align:-0.2em;flex:none}
+.icon-loader{animation:crow-spin 1s linear infinite}
+@keyframes crow-spin{to{transform:rotate(360deg)}}
+nav:not(.doc-nav):not(.doc-pager){display:flex;gap:0.25rem;align-items:center;flex-wrap:wrap}
+nav:not(.doc-nav):not(.doc-pager) a{color:var(--crow-muted);text-decoration:none;padding:0.35rem 0.6rem;border-radius:4px}
+nav:not(.doc-nav):not(.doc-pager) a:hover{color:var(--crow-text)}
+nav:not(.doc-nav):not(.doc-pager) a[aria-current="page"]{color:var(--crow-text);background:color-mix(in srgb,var(--crow-accent) 14%,transparent)}
+td.num,th.num{text-align:right}
+td.up{color:var(--crow-up)}
+td.down{color:var(--crow-down)}
+img[style*="object-fit"]{display:block}
+:root[data-wide="true"] body{max-width:none;padding:1.25rem 1.25rem 3rem}
+:root[data-density="compact"] body{font-size:13.5px;line-height:1.45;padding-top:1.25rem}
+[data-density="compact"] h1{font-size:1.25rem}
+[data-density="compact"] h2{margin:1.4rem 0 0.5rem}
+[data-density="compact"] button{padding:0.3rem 0.7rem;font-size:0.88rem}
+[data-density="compact"] input,[data-density="compact"] select,[data-density="compact"] textarea{padding:0.28rem 0.5rem;font-size:0.88rem}
+[data-density="compact"] th{padding:0.3rem 0.7rem 0.3rem 0}
+[data-density="compact"] td{padding:0.32rem 0.7rem 0.32rem 0}
+[data-density="compact"] .card{padding:0.55rem 0.7rem}
+[data-density="compact"] 
+[data-density="compact"] .crow-tabs label{padding:0.4rem 0.7rem}
+.overlay > :not(:first-child){position:absolute}.overlay > [data-anchor="center"]{left:50%;top:50%;transform:translate(-50%,-50%)}.overlay > [data-anchor="top_right"]{right:0;top:0}.overlay > [data-anchor="top_left"]{left:0;top:0}.overlay > [data-anchor="bottom_right"]{right:0;bottom:0}.overlay > [data-anchor="bottom_left"]{left:0;bottom:0}@media (max-width:1023px){[data-below="tablet"][data-becomes="stack"]{flex-direction:column!important;align-items:stretch!important}[data-below="tablet"][data-columns-then="1"]{grid-template-columns:repeat(1,minmax(0,1fr))!important}[data-below="tablet"][data-columns-then="2"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}[data-hidden-below="tablet"]{display:none!important}}@media (max-width:599px){[data-below="phone"][data-becomes="stack"]{flex-direction:column!important;align-items:stretch!important}[data-below="phone"][data-columns-then="1"]{grid-template-columns:repeat(1,minmax(0,1fr))!important}[data-below="phone"][data-columns-then="2"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}[data-hidden-below="phone"]{display:none!important}}
+body{max-width:none;padding:0;background:var(--crow-bg)}.doc-top{position:sticky;top:0;z-index:5;height:52px;padding:0 1rem;background:var(--crow-surface);border-bottom:1px solid var(--crow-border)}.doc-top .title{font-weight:650;letter-spacing:-0.01em;color:var(--crow-text);text-decoration:none}.doc-top .links a{color:var(--crow-muted);text-decoration:none;font-size:0.9rem}.doc-top .links a:hover{color:var(--crow-accent)}.doc-search{width:220px;font-size:0.88rem;padding:0.35rem 0.6rem}.doc-results{position:fixed;top:52px;right:1rem;width:min(520px,92vw);max-height:70vh;overflow:auto;z-index:7;background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,0.35);padding:0.4rem}.doc-results a{display:block;padding:0.5rem 0.7rem;border-radius:4px;text-decoration:none;color:var(--crow-text)}.doc-results a:hover{background:color-mix(in srgb,var(--crow-accent) 12%,transparent)}.doc-results a b{display:block;font-weight:600;color:var(--crow-accent);margin-bottom:0.15rem}.doc-results a span{display:block;font-size:0.84rem;color:var(--crow-muted);line-height:1.4}.doc-results .none{margin:0.5rem 0.7rem;color:var(--crow-muted)}.doc-pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--crow-border)}.doc-pager a{flex:1 1 0;max-width:48%;text-decoration:none;color:var(--crow-text);border:1px solid var(--crow-border);border-radius:6px;padding:0.7rem 0.9rem;background:var(--crow-surface)}.doc-pager a:hover{border-color:var(--crow-accent)}.doc-pager a span{display:block;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--crow-muted);margin-bottom:0.2rem}.doc-pager a.next{text-align:right;margin-left:auto}.nav-toggle{width:34px;height:34px;padding:0;font-size:1.1rem;line-height:1;background:transparent;border-color:transparent}.nav-toggle:hover{background:var(--crow-bg);border-color:var(--crow-border)}.doc-side{position:sticky;top:52px;height:calc(100vh - 52px);overflow:auto;background:var(--crow-surface);border-right:1px solid var(--crow-border);padding:1rem 0.75rem 2rem}body.nav-closed .doc-side{display:none!important}@media (max-width:1023px){body.nav-open .doc-side[data-hidden-below]{display:flex!important;position:fixed;left:0;top:52px;width:280px;max-width:85vw;z-index:6;box-shadow:0 12px 40px rgba(0,0,0,0.35)}}.doc-nav{font-size:0.9rem;line-height:1.45}.doc-nav .brand{display:block;font-weight:650;color:var(--crow-text);text-decoration:none;padding:0.3rem 0.6rem 0.9rem;letter-spacing:-0.01em}.doc-nav .part{margin:1.2rem 0 0.35rem;padding:0 0.6rem;font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--crow-muted)}.doc-nav a{display:block;color:var(--crow-text);text-decoration:none;padding:0.3rem 0.6rem;border-radius:4px;border-left:2px solid transparent}.doc-nav a:hover{background:color-mix(in srgb,var(--crow-text) 6%,transparent)}.doc-nav a.current{color:var(--crow-accent);font-weight:600;background:color-mix(in srgb,var(--crow-accent) 12%,transparent);border-left-color:var(--crow-accent);border-radius:0 4px 4px 0}.doc-nav a.d2{padding-left:1.6rem;font-size:0.86rem;color:var(--crow-muted)}.doc-nav a.d2:hover,.doc-nav a.d2.current{color:var(--crow-accent)}.doc-nav a.d2:hover{color:var(--crow-text)}.doc-nav a.d3{padding-left:2.4rem;font-size:0.84rem;color:var(--crow-muted)}.doc-nav details>summary{list-style:none;display:flex;align-items:center;cursor:pointer;border-radius:4px}.doc-nav details>summary::-webkit-details-marker{display:none}.doc-nav details>summary>a{flex:1 1 auto}.doc-nav details>summary::after{content:'';flex:none;width:0.45rem;height:0.45rem;margin:0 0.7rem 0 0.4rem;border-right:1.5px solid var(--crow-muted);border-bottom:1.5px solid var(--crow-muted);transform:rotate(-45deg);transition:transform 120ms ease}.doc-nav details[open]>summary::after{transform:rotate(45deg)}.doc{min-width:0;max-width:880px;font-size:1rem;line-height:1.65}.doc h1{font-size:1.9rem;margin:0 0 1rem}.doc h2{font-size:1.35rem;font-weight:650;text-transform:none;letter-spacing:-0.01em;color:var(--crow-text);margin:2rem 0 0.6rem;padding-top:0.4rem;border-top:1px solid var(--crow-border)}.doc h3{font-size:1.1rem;margin:1.5rem 0 0.4rem}.doc h1 a.anchor,.doc h2 a.anchor,.doc h3 a.anchor,.doc h4 a.anchor{color:inherit;text-decoration:none}.doc p{margin:0.7rem 0}.doc pre{background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:6px;padding:0.8rem 1rem;overflow-x:auto;margin:0.8rem 0;font-size:0.88rem;line-height:1.5}.doc pre.output{border-left:3px solid var(--crow-muted);color:var(--crow-muted)}.doc pre.crow-error{border-left:3px solid var(--crow-down)}.doc :not(pre)>code{background:var(--crow-surface);border:1px solid var(--crow-border);border-radius:3px;padding:0.05em 0.3em;font-size:0.88em}.doc blockquote{margin:1rem 0;padding:0.2rem 1rem;border-left:3px solid var(--crow-accent);color:var(--crow-muted)}.doc table{margin:0.8rem 0;display:block;overflow-x:auto}.doc th{text-transform:none;letter-spacing:0;font-size:0.9rem;color:var(--crow-text)}.doc td{font-variant-numeric:normal;vertical-align:top}.doc ul,.doc ol{padding-left:1.4rem}.doc li{margin:0.25rem 0}.doc img{max-width:100%}.doc hr{border:0;border-top:1px solid var(--crow-border);margin:2rem 0}.crow-run{margin:0.8rem 0}.crow-run .crow-editor pre{margin:0}.crow-run pre.gutter{flex:none;text-align:right;user-select:none;color:var(--crow-muted);padding-right:0.7rem;border-right:0;border-radius:6px 0 0 6px}.crow-run pre.crow{flex:1 1 0;min-width:0;border-left:0;border-radius:0 6px 6px 0}.crow-run code[contenteditable]{display:block;outline:none;cursor:text;min-height:1.4em}.crow-run .crow-toolbar button{font-size:0.85rem;padding:0.2rem 0.7rem}.crow-run .crow-toolbar button.stop{margin-left:auto}.crow-run .crow-caption{margin:0;font-size:0.78rem;color:var(--crow-muted)}.crow-run pre.output{margin:0;white-space:pre-wrap}.crow-run pre.crow-result.ok{border-left-color:var(--crow-up)}.crow-run pre.crow-result.fail{border-left-color:var(--crow-down)}.crow-run pre.crow-result.busy{border-left-color:var(--crow-accent);opacity:0.8}.k{color:var(--crow-accent)}.s{color:var(--crow-up)}.c{color:var(--crow-muted);font-style:italic}.n{color:var(--crow-down)}.v{font-weight:600}.f{color:var(--crow-text)}</style>
+</head>
+<body>
+<div class="stack" style="display:flex;flex-direction:column"><div class="row doc-top" style="display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:16px;justify-content:space-between"><button class="nav-toggle" title="menu">☰</button><img alt="" src="magpie.svg?v=cb28bf38" style="height:28px;width:28px"></img><a class="title" href="index.html">The Magpie Book</a><div class="row links" data-hidden-below="phone" style="display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:16px"><input class="doc-search" data-hidden-below="phone" placeholder="Search  /" type="search"></input><a href="../index.html">Article</a><a href="https://github.com/agncrow/magpie">GitHub</a></div></div><div class="doc-results" hidden="hidden"></div><div class="row" style="display:flex;flex-direction:row;flex-wrap:nowrap;align-items:flex-start"><div class="stack doc-side" data-hidden-below="tablet" style="display:flex;flex-direction:column;width:272px"><nav class="doc-nav"><a class="brand" href="introduction.html">The Magpie Book</a><p class="part">Part I — The Log</p><a class="d1" href="installing.html">Installing Magpie</a><a class="d1" href="batches.html">Batches, Reads, a Commit and a Merge</a><a class="d1" href="windows.html">Windows: a Read Is Bounded</a><details class="group"><summary><a class="d1" href="sequencer.html">The Sequencer</a></summary><a class="d2" href="flush.html">A Batch Without the Flush</a></details><a class="d1" href="point-reads.html">Point Reads by Several Keys</a><details class="group"><summary><a class="d1" href="search.html">Search</a></summary><a class="d2" href="search-forms.html">Search's Forms</a></details><a class="d1" href="vectors.html">Vectors: the Nearest Rows</a><a class="d1" href="aggregates.html">Aggregates and the As-Of Join</a><a class="d1" href="views.html">A View That Follows the Log</a><a class="d1" href="operations.html">Operations: Figures, Backup, Restore</a><a class="d1" href="second-node.html">A Second Node</a><p class="part">Part II — Other Clients</p><a class="d1" href="http.html">HTTP</a><a class="d1" href="kafka.html">The Kafka Protocol</a><a class="d1" href="redis.html">The Redis Protocol</a><p class="part">Part III — Built on Magpie</p><a class="d1" href="kg.html">A Knowledge Graph: kg</a><a class="d1" href="features.html">A Feature Store: features</a><p class="part">Part IV — Reference</p><a class="d1" href="REFERENCE.html">Every Function</a><a class="d1" href="PARTS.html">The Parts at Work</a><p class="part">Appendices</p><a class="d1" href="design.html">The Design</a><a class="d1 current" href="port.html">The Port to Crow</a><a class="d1" href="measuring.html">Measuring Magpie</a><a class="d1" href="licensing.html">Licensing</a></nav></div><div class="stack doc" style="display:flex;flex-direction:column;flex:1 1 0;min-width:0;padding:32px"><h1 id="magpie-in-crow-the-kernels-rewritten-and-what-the-language-gains-for-it"><a class="anchor" href="#magpie-in-crow-the-kernels-rewritten-and-what-the-language-gains-for-it">Magpie in Crow: the kernels rewritten, and what the language gains for it</a></h1>
+<p>(Moved here from the crow repository's docs/ on 2026-10-30, when Magpie
+became a repository of its own: a path below that names crow's sources —
+<code>src/</code>, <code>crow_runtime/</code>, <code>tests/parity/</code>, the Rust tests — is the crow
+repository's, as it was when written; Magpie's own files are this
+repository's <code>packages/</code>, <code>examples/</code> and <code>tests/</code>.)</p>
+<p>(Since 2026-10-29 Magpie is a package, <code>packages/magpie</code>: the modules
+this note ports are its parts, under its files' names — <code>codec</code> is
+<code>lz77</code>, <code>packing</code> <code>bitpack</code>, <code>encode</code> <code>columnchunk</code>, <code>file</code> <code>fileformat</code>,
+<code>tail</code> <code>sequencer</code>, <code>merge</code> <code>merger</code>, <code>exec</code> <code>executor</code>, <code>search</code>
+<code>searcher</code>, <code>nearest</code> <code>knn</code>, <code>stem</code> <code>stemmer</code>, <code>records</code> <code>recordsets</code> —
+and their tests run from there: <code>crow test packages/magpie/lz77.co</code>.)</p>
+<p>Decided by Vijay, 2026-10-27: a package is written in Crow, and its
+author writes no Rust. Magpie is the first package held to that rule,
+and it is the hardest case, because two thirds of it is Rust today:
+the kernels under <code>crow_runtime/src/magpie/</code> (7,500 lines: the file
+format, the codec, the encodings, the merge, the sequencer, the
+executor, the postings and the search, the nearest scan, the bloom
+filters, the gzip and snappy decoders, the stemmer) and the Kafka
+records kernel (<code>crow_runtime/src/kafka.rs</code>), reached from the Crow
+modules through nineteen rows of the sys layer. This document is the
+plan to rewrite every one of them in Crow, held to the Rust original
+as the oracle, and the five things the language lacks for that, each
+checked against the spec for an existing way (design rules 1 and 24).</p>
+<p>What stays Rust is the language's own: frames, tensors, text, sockets,
+the core pool, the compiler. crow_runtime keeps its kernels; a package
+gets none.</p>
+<h2 id="1-the-rule-and-what-it-costs"><a class="anchor" href="#1-the-rule-and-what-it-costs">1. The rule, and what it costs</a></h2>
+<p>A kernel written in Crow runs at the interpreter's speed under
+<code>crow run -i</code> and at the compiled program's under <code>crow run</code>. For
+per-byte work the interpreter is two orders slower than Rust, so a
+package's kernels must be compiled ahead of the programs that use
+them: the assembly step of the package plan (docs/magpie-repo-design,
+to be written) compiles the functions a crowfile names and registers
+them as rows the interpreter calls natively, so both modes run the
+same compiled code. Until assembly exists, Magpie's kernels inside the
+standard module run interpreted under <code>crow run -i</code>: correct, held by
+the same tests, and slow. The measures in docs/magpie-design.md are
+re-run in compiled mode at the end of the port and the interpreted
+numbers stated as they are, which is the case for assembly.</p>
+<p>Compiled Crow over bytes and ints is the evidence the port stands on:
+revcomp, k-nucleotide and fasta run within a small factor of Rust,
+after the emitter's work on text builders, plain vectors and
+known-ASCII reads. The CSV parser that measured 20 to 45 times slower
+than the runtime's did per-cell work through values that can fail; the
+primitives below are chosen so a kernel never does that.</p>
+<p>The first kernel ported is the codec, and it is measured against its
+Rust original on the same input before the second is begun: if
+compiled Crow lands within about two times, the port goes on; if not,
+the emitter is where the work is, not the kernels.</p>
+<h2 id="2-what-crow-lacks-and-the-form-each-takes"><a class="anchor" href="#2-what-crow-lacks-and-the-form-each-takes">2. What Crow lacks, and the form each takes</a></h2>
+<p>Every item below was searched for in the spec first. Where a form
+exists it is extended by kind or by an option, never doubled.</p>
+<h3 id="2-1-bytes-written-in-place"><a class="anchor" href="#2-1-bytes-written-in-place">2.1 Bytes written in place</a></h3>
+<p>What exists: <code>bytes[text]</code>, <code>text[b]</code>, <code>len[b]</code>, <code>byte[b, i]</code>,
+<code>slice[b, from, to]</code>, <code>find[b, needle]</code>, <code>concat[a, b]</code>, <code>pack</code>,
+<code>unpack</code>, <code>ieee[x]</code>, <code>hex</code>, <code>hash</code>, <code>digest</code>, <code>hmac</code>, <code>random[n]</code>,
+<code>mask</code>, <code>xor</code>, <code>same</code>. A bytes value is <code>Bytes(Vec&lt;u8&gt;)</code> in the runtime,
+held plain in both backends. What a kernel lacks is writing: a decoder
+builds its output a byte at a time, an encoder writes lengths into
+what it wrote, a hash table of positions is a vector of ints.</p>
+<ul>
+<li><code>bytes[n]</code>: <code>n</code> zero bytes (a second <code>bytes</code> row, by kind, beside
+<code>bytes[text]</code>).</li>
+<li><code>set[b, i, v]</code>: the byte at <code>i</code> replaced by <code>v</code>, 0 to 255, counted
+from the end when negative, outside stops (the <code>set</code> the lists and
+maps have, for bytes).</li>
+<li><code>push[b, v]</code>: the byte appended (the <code>push</code> the lists have).</li>
+<li><code>concat[a, b]</code> with <code>a</code> moved: appended where <code>a</code> lies.</li>
+</ul>
+<p>All three in place through what exists: <code>Prop::InPlace</code> on the row, a
+take bridge for the interpreter's moved argument, a <code>taken</code> path the
+emitter prints when the first argument is a moved local
+(<code>taken_in_place</code> splits <code>b = set[b, i, byte[b, j]]</code> as it splits a
+list's). Reads stay <code>byte[b, i]</code>: a kernel's loop reads and writes by
+position, and the vector of ints a hash table needs is a one-axis
+tensor, which the emitter already keeps as <code>Vec&lt;i64&gt;</code>.</p>
+<h3 id="2-2-numbers-in-bytes"><a class="anchor" href="#2-2-numbers-in-bytes">2.2 Numbers in bytes</a></h3>
+<p>What exists: <code>pack[n, width]</code> and <code>unpack[b, at, width]</code> are
+big-endian and signed, as Kafka's wire is; <code>ieee[x]</code> is a float's eight
+bytes, big-endian. Magpie's format is little-endian with unsigned
+lengths, and a decoder reads floats.</p>
+<ul>
+<li><code>pack[n, width, little = false]</code>, <code>unpack[b, at, width, little = false, signed = true]</code>: the options, defaults as today.</li>
+<li><code>ieee[x, width = 8, little = false]</code>, and <code>ieee[b, at, width, little]</code>:
+the bytes at <code>at</code> as the float they spell (a second <code>ieee</code> row, by
+kind, the inverse of the first), 4 for single precision; the reader's
+width and byte order are positions, since an option may be given by
+position and <code>ieee[b, at, 8]</code> would be the writer's row with a width
+and a byte order.</li>
+<li><code>digest[b, 'crc32']</code> and <code>hash[b, 'crc32']</code>: the checksum gzip and
+Kafka's message sets carry, four bytes, written by us as the other
+digests are not (a table-driven CRC-32 is twenty lines; the spec's
+"what stays native" note names no crate for it).</li>
+<li><code>wrapmul[a, b]</code>, <code>wrapadd[a, b]</code>, <code>wrapsub[a, b]</code> in <code>use bits</code>: the
+product, sum or difference of two 64-bit patterns wrapped to 64 bits,
+the int of the low bits. A hash (FNV's multiply per byte, murmur's
+mix), a linear congruence and a checksum are written on wrapping
+arithmetic, which a language whose ints grow has no way to say: the
+product of two ints past 2^32 is a growing int, exact and slow, and
+<code>bitand</code> of it with a 64-bit mask is a growing int's operation too.
+The three rows answer a 64-bit int, so the width pass keeps what is
+computed from them narrow.</li>
+</ul>
+<p>What the width pass needs from a kernel's loop, found porting the codec
+and the packing: bits gather by <code>bitor</code>, never by <code>+</code>, since a sum in a
+loop is a growing int to the pass and <code>bitor</code> of two non-negative ints
+is bounded by the larger's power of two; a value wider than 32 bits is
+packed as its low 32 bits and its high bits apart, so no shift passes
+64 bits; and a 64-bit pattern at or past 2^63 is held as the negative
+int of the same bits, assembled as <code>lo + shift[hi, 32]</code> where <code>hi</code> is
+read as signed in a branch the pass bounds. <code>CROW_WIDTH_DEBUG=1</code> shows
+the settled ranges; a kernel is not done while one of its loop's ints
+is wide.</p>
+<h3 id="2-3-files"><a class="anchor" href="#2-3-files">2.3 Files</a></h3>
+<p>What exists: <code>file[path]</code> (bytes, whole), <code>store[path, bytes]</code>,
+<code>filesize[path]</code>, <code>read</code>, <code>write</code>, <code>exists</code>, <code>mkdir</code>, <code>ls</code>, <code>rm</code>. The
+write path of a batch is: write a part file, flush it to the disk,
+link it into place (never over an existing name), flush the directory.
+A reader opens a file's footer, then one chunk. The footer cache is
+keyed by path, size and modification time.</p>
+<ul>
+<li><code>file[path, from, n]</code>: the bytes of a region (a third <code>file</code> row,
+by arity).</li>
+<li><code>modified[path]</code>: when the file was last written, a moment.</li>
+<li><code>flushed[path]</code>: the file, or the directory, written through to the
+disk (<code>F_FULLFSYNC</code> on macOS, <code>fsync</code> elsewhere); answers the path.</li>
+<li><code>link[from, to]</code>: a hard link, refused with the system's reason
+where <code>to</code> exists; answers <code>to</code>.</li>
+<li><code>move[from, to]</code>: renamed over <code>to</code>, atomically, as a manifest is
+replaced; answers <code>to</code>. (<code>rename</code> is the frame module's.)</li>
+</ul>
+<h3 id="2-4-process-memory"><a class="anchor" href="#2-4-process-memory">2.4 Process memory</a></h3>
+<p>What exists: top-level variables, invisible to functions; facts, a
+served app's state, typed by their declaration and held by the session
+layer; <code>env</code>; the notes a connection keeps (<code>note</code>, <code>noted</code>: text, per
+stream). Nothing a module's functions can hold between calls for the
+process, shared by its threads. The sequencer is that: the rows put
+since the last flush, the key index, the image of each key's newest
+row; so is the footer cache, and the registry of what a process has
+opened.</p>
+<ul>
+<li><code>remember[name, v]</code>: the value held for the process under the name,
+replacing what was held.</li>
+<li><code>recall[name, default]</code>: the value held, or the default where none
+is; typed by the default, as <code>env[name, default]</code> is answered by its
+default's shape.</li>
+<li><code>forget[name]</code>: nothing held under the name.</li>
+<li><code>revise[name, default, f, x]</code>: <code>f[held, x]</code> run under the name's
+lock, with <code>held</code> the value held (the default where none), the value
+<code>f</code> answers held afterwards and answered; <code>f</code> owns the value it is
+handed, so a map's insert or a list's push inside it is in place.
+One schedule at a time per name, so two handlers writing one log
+serialise by construction, as the Rust sequencer's lock serialises
+them.</li>
+</ul>
+<p>The store is per process and per mode: the compiled program keeps
+typed slots, the interpreter its values; the semantics are one. Two
+effect kinds carry the rules: <code>held</code> for a read, <code>held.write</code> for
+the rest, allowed and refused where <code>db.read</code> and <code>db.write</code> are (a
+view reads neither; a derivation reads, never writes), ordered in a
+loop for the writes, recorded by no rehearsal since nothing leaves the
+program. One kind of the row vocabulary is new: <code>Kind::Any</code>, the kind
+of the argument handed where it is taken, which types <code>recall</code>'s
+answer by its default and <code>revise</code>'s function by its default and the
+rest of its arguments, as <code>later[f, a, b]</code> hands its rest to <code>f</code>.</p>
+<p>Design Note, recorded here for the spec: a timer was considered for
+the sequencer's flush and rejected again (the spec's "Periodicity Is
+Declared, Not Written"). A <code>put</code> appends to the process's memory and
+schedules <code>later[flush_all]</code>, with no argument, which is allowed in a
+handler too: coalesced, so a burst of puts shares one flush; waited
+for at exit, so nothing put is lost to a clean end; run inline by the
+interpreter, so under <code>crow run -i</code> a put is durable when it answers,
+which is a legal schedule and a slower one. The ten milliseconds of
+the Rust thread become "as soon as the loop is free".</p>
+<h3 id="2-5-columns-as-their-parts"><a class="anchor" href="#2-5-columns-as-their-parts">2.5 Columns as their parts</a></h3>
+<p>What exists: a loop over a column yields its cells, each a value that
+can fail where the cell can be missing; <code>df.name</code> reads a column and
+<code>df.name = values</code> writes one from a list, a tensor or a column; a
+frame's <code>columns</code>. What the writer and the reader of a file do instead
+is read a column's rows <code>start..end</code> as the vectors they are held in and
+build a column from such vectors, with no value per cell: the Rust
+writer encodes <code>Vec&lt;i64&gt;</code> and a validity bitmap; the reader hands the
+frame a <code>Column</code> it decoded whole. The CSV parser's factor came from
+the per-cell path, and the file format's chunk is the vector's shape.</p>
+<p>Rows of the sys layer, each over a column and a range of its rows,
+answering what a chunk holds: <code>ints_of[col, from, to]</code> (missing as 0),
+<code>floats_of</code>, <code>bools_of</code>, <code>millis_of</code> and <code>zones_of</code> for a moment column,
+<code>vectors_of</code> (the rows' floats laid flat) with <code>vector_width[col]</code>,
+<code>text_bytes_of</code> with <code>text_ends_of</code> (each cell's end offset, as the
+text is held), <code>present_of</code> (the validity as a bitmap's bytes, bit i of
+byte i / 8, the chunk's own layout, empty where every cell is present),
+and <code>cell_kind[col]</code> (<code>int</code>, <code>float</code>, <code>text</code>, <code>bool</code>, <code>moment</code>,
+<code>vector</code>). The inverse builds a column from its parts: <code>ints_column[ints, present]</code>, <code>floats_column</code>, <code>bools_column[bits, present]</code>,
+<code>moments_column[millis, zones, present]</code>, <code>vectors_column[width, floats, present]</code>, <code>text_column[bytes, ends, present]</code>, each a <code>Column</code> the
+program writes onto a frame with <code>df.</code>name<code> = …</code>, which exists. A
+distinct count is exact: a map keyed by a 64-bit hash of the cell's
+bytes holding the byte strings that share it, compared with <code>same</code>.</p>
+<h3 id="2-6-parallel-decoding"><a class="anchor" href="#2-6-parallel-decoding">2.6 Parallel decoding</a></h3>
+<p>Nothing new. A loop over file reads is ordered, since a read is an
+effect; a kernel reads the groups it needs first, then decodes them in
+a loop with no effect, which the compiler runs across the cores.</p>
+<h3 id="2-7-packages-and-the-sys-layer"><a class="anchor" href="#2-7-packages-and-the-sys-layer">2.7 Packages and the sys layer</a></h3>
+<p><code>use sys</code> had been refused in a program and allowed in a standard
+module. A package that holds kernels needs it: bytes, files, hashing,
+memory. Proposed: a package's parts may <code>use sys</code>. Decided wider (Vijay,
+2026-10-29): keeping <code>sys</code> and <code>memory</code> to the standard library is a
+suggestion, not a rule — any program or package may import them, and a
+package that needs a kernel's speed is written on them.</p>
+<h2 id="3-the-port"><a class="anchor" href="#3-the-port">3. The port</a></h2>
+<p>Order, each kernel a milestone with its oracle, a commit after the
+gate:</p>
+<table><thead><tr><th>Kernel</th><th>Rust</th><th>Crow module</th><th>Oracle</th></tr></thead><tbody>
+<tr><td>bit packing (<code>pack.rs</code>)</td><td>211</td><td><code>magpie.pack</code></td><td>the Rust rows, test-only, byte for byte</td></tr>
+<tr><td>codec (<code>codec.rs</code>)</td><td>217</td><td><code>magpie.codec</code></td><td>byte for byte; the measurement of section 1</td></tr>
+<tr><td>encodings (<code>encode.rs</code>)</td><td>580</td><td><code>magpie.encode</code></td><td>a chunk's bytes identical for every kind, round trips</td></tr>
+<tr><td>bloom (<code>bloom.rs</code>)</td><td>95</td><td><code>magpie.bloom</code></td><td>the same bits for the same values</td></tr>
+<tr><td>file (<code>file.rs</code>)</td><td>841</td><td><code>magpie.file</code></td><td>a file written by both is identical; each reads the other's</td></tr>
+<tr><td>manifest (<code>manifest.rs</code>)</td><td>174</td><td><code>magpie.manifest</code></td><td>identical bytes</td></tr>
+<tr><td>sequencer (<code>tail.rs</code>)</td><td>570</td><td><code>magpie.tail</code></td><td>the module's tests, the crash harness, the pending listing</td></tr>
+<tr><td>merge (<code>merge.rs</code>)</td><td>380</td><td><code>magpie.merge</code></td><td>the segment identical for the same inputs</td></tr>
+<tr><td>postings, search, stem (<code>postings.rs</code>, <code>search.rs</code>, <code>stem.rs</code>)</td><td>1,045</td><td><code>magpie.search</code></td><td>the same ranking and scores to the last digit; Lucene's forms</td></tr>
+<tr><td>executor (<code>exec.rs</code>)</td><td>740</td><td><code>magpie.exec</code></td><td><code>summary</code> as <code>group</code> over <code>scan</code>; <code>prior</code> as the as-of join</td></tr>
+<tr><td>nearest (<code>nearest.rs</code>)</td><td>268</td><td><code>magpie.nearest</code></td><td>the flat index's positions and cosines</td></tr>
+<tr><td>inflate, snappy (<code>inflate.rs</code>, <code>snappy.rs</code>)</td><td>497</td><td><code>magpie.inflate</code>, <code>magpie.snappy</code></td><td>the reference streams the Rust tests hold</td></tr>
+<tr><td>records (<code>kafka.rs</code>)</td><td>334</td><td><code>magpie.records</code></td><td>message sets identical both ways; kafka-python</td></tr>
+<tr><td>the verbs (<code>mod.rs</code>)</td><td>1,594</td><td><code>magpie</code></td><td>the module's tests; parity 302, 303; the doors' tests</td></tr>
+</tbody></table>
+<p>During the port the Rust kernels stay, reached by test-only rows
+(<code>Prop::TestOnly</code>) a module test compares against; at the end of each
+milestone the Crow kernel is what the verbs call, and when the last is
+through, <code>crow_runtime/src/magpie/</code>, <code>kafka.rs</code>, the sys bridges and
+the nineteen rows go, and <code>tests/freeze/names.txt</code> shrinks by every
+name of Magpie's the compiler held.</p>
+<p>The modules are registered under <code>magpie</code> (<code>under: Some("magpie")</code>, as
+<code>web.auth</code> is under <code>web</code>), each a file beside <code>magpie.co</code>, imported by
+the verbs with <code>use magpie.file</code> and by nothing else. A kernel's
+function is exported from its module and helpers keep their
+underscore, as every Crow-written module does.</p>
+<h2 id="4-what-is-measured-and-when"><a class="anchor" href="#4-what-is-measured-and-when">4. What is measured, and when</a></h2>
+<p>After the codec: compress and decompress of 50 MB, compiled at
+<code>crow build</code>, against the Rust codec on the same bytes. After the
+file module: a month's segment written and read by both. At the end:
+every number of docs/magpie-design.md's measured section, compiled,
+beside the Rust numbers it replaces, and the interpreted numbers
+beside them as the case for assembly. The article is revised then.</p>
+<h3 id="3-1-ported-so-far-2026-10-27"><a class="anchor" href="#3-1-ported-so-far-2026-10-27">3.1 Ported so far (2026-10-27)</a></h3>
+<p><code>magpie.codec</code>, <code>magpie.packing</code>, <code>magpie.encode</code> (the chunk: every
+column kind, the kernel's bytes byte for byte, tested in both modes,
+the long columns through the codec), <code>magpie.bloom</code> (the filter, bit
+for bit, its positions held to the kernel's over ten thousand probes),
+<code>magpie.stem</code> (word for word) and <code>magpie.postings</code> (the index of a
+row group, byte for byte, blocks included). Two traps a kernel in Crow meets, recorded for the next ones:
+a list literal of ints (<code>[h, g]</code>) is a tensor, which holds a 64-bit
+pattern as a float and rounds it — two hashes travel in a record; and
+<code>%</code> keeps the sign of its left side, so a pattern read as unsigned is
+<code>x % m</code>, made non-negative, plus 2^64 modulo m, modulo m again. What the port added to the
+language beyond section 2: <code>wrap[x]</code> (a growing int's low 64 bits),
+<code>float_bytes</code>/<code>float_values</code> (a chunk's floats at once), and
+<code>text_dict_column</code> (a text column kept as its dictionary, as the chunk
+holds it). What it found: a module row's call printed without the
+owned-kind rule (a list moved at every call, E0382), <code>encode</code> and
+<code>decode</code> being the core's names (the exports are <code>chunk</code> and <code>unchunk</code>),
+and the interpreter's placeholder for a missing float cell (NaN) differing
+from the compiled program's (what was written) — the column rows read a
+missing cell as one placeholder now, in both modes.</p>
+<p><code>magpie.file</code> (2026-10-28): the file — the writer in parts
+(<code>columns_of</code>, <code>group_bytes</code>, <code>finish</code>, and <code>file_of</code> over them, so a
+merge can stream groups), the statistics and the token index with the
+kernel's rules, the reader by region (<code>opened</code>, <code>entries</code>, <code>groups_of</code>,
+the filters, <code>about</code>) — held to the kernel through <code>file_rs</code> byte for
+byte (plain, narrow and stemmed) and to <code>batch_read</code>/<code>batch_stats</code> on
+the way back, the torn and foreign files refused in the kernel's words,
+the same program run in both modes. What it added to the language:
+<code>stack[frames]</code> of a list of frames (a <code>Frames</code> kind beside <code>Chunks</code>,
+as <code>stack[tensors]</code> takes a list: the groups a reader decodes apart are
+stacked in one pass, where <code>stack[a, b]</code> in a loop copied the whole each
+round), <code>filled[filter, items]</code> in <code>magpie.bloom</code> (a group's distinct
+values added in one pass; <code>add</code> per item copied the bits each time),
+and <code>filesize</code> read for the file's tail. Traps: a record's field may
+not be named <code>kind</code> (reserved with <code>ok</code>, <code>reason</code> and <code>trace</code> on every
+value) — a <code>lo.kind eq 0</code> had compared an error's kind, text, with a
+number, and <code>push[out, b.kind]</code> had typed the bytes as a list of text;
+<code>split['', ',']</code> is <code>['']</code>, not an empty list — an empty list of text
+is <code>slice[['x'], 0, 0]</code>; <code>set[xs, i, v]</code> is a map's and bytes' form,
+a list's write is <code>xs[i] = v</code>; <code>reader</code> is a web form's name; the
+rows-per-group rule is written by the frame's bytes as a plain text
+column holds them (the kernel read the column's in-memory size, which a
+program cannot see), so the oracle takes <code>per</code>. What it found in the compiler: a program's top-level
+name made a function's branch-local of that name the program's in the
+scoping pass (lower.rs <code>scoped</code>), so two sibling branches binding
+<code>plain</code> to two kinds — the encoder's — were refused as a reassignment
+only in programs holding a <code>plain</code>; a function's body now binds its own
+locals whatever the program names, unless the program holds state
+(parity 304); a list under a map's key grew by a copy of
+the whole list at every push (<code>m[k] = push[m[k], v]</code>, and the <code>set</code> form
+the builder had used): the postings of a 200,000-row column took 9.7 s,
+the kernel's 0.1 s — a place now grows where it lies, in both modes
+(parity 306), and the builder writes at the key; a record's field given
+<code>[]</code> was never typed by what was pushed onto it, and a map of empty maps
+was declared a map of text (both did not build compiled — parity 307); a
+function taking a column shared one copy between an int column and a
+float column (parity 305). Measured on 200,000 rows of five columns, one
+indexed, compiled: the writer 265 ms against the kernel's 90, the reader
+13 ms against 3 — the rest is per-cell work (a bound, a distinct value
+looked up) the kernel does in a tight loop. Still the kernel's: the
+footer cache per process (2.4, process memory) and the pending rows read
+as a file in memory (the tail's).</p>
+<p><code>magpie.manifest</code> and <code>magpie.merge</code> (2026-10-28), and the verbs' reads:
+the manifest byte for byte (<code>listed</code>, <code>declare</code>, <code>write_listed</code> beside
+and over the old file, <code>catalog_of</code>); the streaming merge — one group
+per input held, the rows decided up to the least of the inputs' last
+loaded rows, a key's run held back until another key follows — held to
+the kernel's segments and manifest at the production sizes and, through
+<code>stream_rs</code>, at sizes small enough to cut several groups and segments,
+in both the keep-latest and keep-every modes. The verbs now read files
+in Crow: <code>lookup</code>, <code>latest</code>, <code>since</code>, <code>between</code> and <code>find</code> prune by the
+blocks' bounds and filters and decode only the groups that may hold a
+row (the pending rows of the tail are still read through the kernel),
+<code>batches</code> reads the catalog and each file's <code>about</code>, <code>sync</code> flushes each
+file and the directory, and <code>merge</code> folds through <code>merge_files</code>. What
+the port added: a row that makes a column says its cells' kind (<code>cells</code>
+on the row: <code>ints_column</code> answers a column of ints), so a column built
+from its parts and written onto a frame keeps its kind; an empty frame's
+column is an empty column of its kind in the interpreter as compiled.
+What it found in the compiler: a failure pushed into a list whose items
+were not known yet (parity 308), a module's local named like one of its
+exports (309), a literal of items typed late (310), a computed column
+name inside a function read as the program's (311), a function whose
+second signature showed only after a round of copies left uncopied, its
+calls answering nothing known (312), a function handed only an empty
+list's items not compiled while its call was (313), and <code>select</code> of a
+frame compiled as the dropdown in a page.</p>
+<p>The executor, nearest, search and the Kafka door's bytes (2026-10-28):
+<code>magpie.exec</code> (<code>summary_of</code> with the kernel's pruning, partials and
+merge order; <code>asof_rows</code>), <code>magpie.nearest</code>, <code>magpie.search</code> (BM25 with
+Lucene's query forms, the indexed groups' block skipping mirrored so a
+tie at the threshold resolves as the kernel's does), and
+<code>magpie.inflate</code>, <code>magpie.snappy</code> and <code>magpie.records</code> — each held to
+its kernel's answers in both modes (inflate and snappy to the kernels'
+own test streams), the verbs and the Kafka door rewired onto them. What the port found in the compiler: a part's computed column
+name renamed apart from the entry's variable (parity 314), <code>keys</code> of a
+map with no key yet guessed as text (315), an empty map widened with no
+type Rust could read (316) or into the wrong kind (317), a plain value
+written beside values that can fail refused or printed bare (318), and
+a returned empty local declared a map of text (319). Left: the
+sequencer and its process memory (2.4), then the kernels, their rows
+and bridges deleted.</p>
+<p>The sequencer, then the kernels deleted (2026-10-28): <code>magpie.tail</code> —
+the memtable and its write-ahead log in Crow over process memory (section
+2.4 as built: <code>use memory</code>, records held by name, one kind per name,
+revised under the name's lock, a path's records forgotten by <code>rm</code>) — on
+which <code>put</code>, <code>batch</code>, <code>sync</code>, <code>latest</code> of one key and every reader's
+pending rows run; the crash harness's cuts (<code>pending</code>, <code>placed</code>,
+<code>listed</code>) are the modules' own. Then the kernels went:
+<code>crow_runtime/src/magpie/</code> and <code>kafka.rs</code> (7,580 lines), the sys rows
+that reached them (<code>batch_*</code>, <code>tail_*</code>, <code>records</code>, <code>records_of</code>) and the
+test-only oracles (<code>*_rs</code>, <code>stream_rs</code>). Their answers were recorded
+first: each module's test holds its bytes to the kernel's digests (the
+first sixteen hex digits of a SHA-256), its frames to the digests of
+their columns' chunks, its refusals to the kernel's words, all read off
+the run that checked them against the kernel one last time; the batch
+files those tests write are written in Crow now (<code>write_batch</code>), and
+were compared with the kernel's byte for byte in that run. What the
+self-check found in the compiler once the ports were exports it calls
+with every kind (92 cases, 14 groups): a column a function walks moved
+by the walk (parity 321); a list of nothing read by a row typed by
+nothing (322), negated as no mask (errors j82); a parameter handed only
+the items of an empty list read as nothing where it is compiled as text
+(323), a value of no known kind not copied, an effect's growing int cast;
+a parameter its body widens kept at the calls' kind, a caller's answer
+an earlier round's guess (324), a parameter reassigned another kind
+taken for its type (j84); a body's guess of text standing against a
+call's number (j83); and a list of frames answered as JSON in neither
+mode (served 25). Once the sequencer and process memory were in, the
+check's second pass (206 cases, 4 groups) found <code>remember</code> and <code>recall</code>
+taking any value (errors j85), an answer of no value handed on making
+a copy of <code>place</code> whose bytes were nothing (parity 328), and <code>len</code> of an
+item of a list nothing fills compiled as a list's length of a text —
+every program that only followed a log or read its metrics (parity 327).
+The served pages found the last: a page calling <code>batch</code> with two frames
+typed apart refused to start, since the sequencer's function handed to
+<code>revise</code> was copied per frame and then refused as a value of several
+kinds — a row that calls a function with its own arguments now hands
+the copy they reach (parity 329).</p>
+<h2 id="4-1-measured-the-codec-2026-10-27"><a class="anchor" href="#4-1-measured-the-codec-2026-10-27">4.1 Measured: the codec, 2026-10-27</a></h2>
+<p>The LZ77 codec ported (<code>src/modules/codec.co</code>), held to the Rust kernel
+byte for byte on every input of the kernel's own tests, then both run
+over the same 50 MB (a text repeated, one byte in 64 replaced by a
+linear congruence's low byte): the Crow module compiled at <code>crow build</code>
+against the kernel, warm, second of two runs.</p>
+<table><thead><tr><th></th><th>Rust kernel</th><th>Crow, compiled</th><th>Factor</th></tr></thead><tbody>
+<tr><td>compress, 50 MB → 7,033,168 bytes</td><td>68 ms</td><td>153 ms</td><td>2.2</td></tr>
+<tr><td>decompress</td><td>9 ms</td><td>34 ms</td><td>3.5</td></tr>
+</tbody></table>
+<p>Three things stood between the first number and this one, each a
+compiler fault the port found, each fixed with its test: the emitter
+asked the taken path (a buffer changed where it lies) for core rows
+alone, so a module row's <code>push</code> and <code>concat</code> copied the buffer at every
+byte, and the first run was quadratic; a bytes parameter a function
+only reads was passed by value, so the hash of four bytes cloned the
+50 MB input once per byte (770 ms once the first was fixed); and the
+width pass bounded a right shift by the value shifted, so <code>shift[v, -16]</code> of a 32-bit int was 32 bits to it, the hash's multiply of it a
+growing int, and the hash ran on big ints. Compress is within the two
+times the plan asks; decompress is not yet: its overlapping matches copy
+a byte at a time through two rows, and its plain matches through a
+<code>slice</code> that allocates, where the kernel extends the buffer from within
+itself. A form for that, or a fusion of <code>concat[out, slice[out, …]]</code> in
+the lowering, is the next optimization, after the file reader shows
+how much of a read it is.</p>
+<h2 id="4-2-measured-the-port-2026-10-28-and-2026-10-29"><a class="anchor" href="#4-2-measured-the-port-2026-10-28-and-2026-10-29">4.2 Measured: the port, 2026-10-28 and 2026-10-29</a></h2>
+<p>The programs of <code>tests/magpie/measure/</code> built with <code>crow build</code> (the
+port is Crow now, so the compiled program is the comparison), each run
+once at the sizes its README names, every number the program's own (the
+median of its warm runs where it takes several). Apple M4 Max, 64 GB.
+The kernel column is docs/magpie-design.md's "Measured 2026-10-27",
+taken interpreted on a quiet machine while the Rust kernels did the
+work; the decompressor's is section 4.1's. "Before" is the port as
+committed (49f9ad2). "Round 1" is with the first list of fixes below
+(2026-10-28; other sessions paused, macOS's media analysis running, load
+4 to 5), taken with a binary that also held a fix of the Rosetta round's
+to how a text column's cells are read, since committed (b608fb2) — a
+binary built without it ran the month's copy for hours. "Now" is with
+both lists, on 921dfb7 (2026-10-29; load 3.4 to 3.9, one core held by an
+orphaned probe and one by macOS's file events).</p>
+<table><thead><tr><th>Measure</th><th>Kernel</th><th>Before</th><th>Round 1</th><th>Now</th><th>Now ÷ kernel</th></tr></thead><tbody>
+<tr><td><code>put</code>, 2,000 then <code>sync</code> (per put)</td><td>77.5 µs</td><td>36,404 µs</td><td>108 µs</td><td>88.5 µs</td><td>1.1</td></tr>
+<tr><td><code>latest</code> by key</td><td>13.5 µs</td><td>109.5 µs</td><td>14.0 µs</td><td>13.5 µs</td><td>1.0</td></tr>
+<tr><td><code>batch</code>, durable</td><td>12.0 ms</td><td>69.4 ms</td><td>13.9 ms</td><td>11.9 ms</td><td>1.0</td></tr>
+<tr><td>summary of 2 columns by key, 200,000 rows</td><td>2 ms</td><td>18,958 ms</td><td>109 ms</td><td>6.9 ms</td><td>3.5</td></tr>
+<tr><td>a common word's top 10, indexed</td><td>7 ms</td><td>204 ms</td><td>21 ms</td><td>17 ms</td><td>2.4</td></tr>
+<tr><td>a rare and a common word, indexed</td><td>8 ms</td><td>208 ms</td><td>26 ms</td><td>21 ms</td><td>2.6</td></tr>
+<tr><td>a common word's top 10, scanned</td><td>11 ms</td><td>133 ms</td><td>105 ms</td><td>53 ms</td><td>4.8</td></tr>
+<tr><td>merge 20,000 / 100,000 vectors of 64</td><td>74 / 311 ms</td><td>420 / 2,157 ms</td><td>111 / 531 ms</td><td>109 / 511 ms</td><td>1.5 / 1.6</td></tr>
+<tr><td><code>nearest</code>, 20,000 / 100,000</td><td>2.0 / 9.0 ms</td><td>15 / 54 ms</td><td>8 / 22 ms</td><td>8 / 22 ms</td><td>4 / 2.4</td></tr>
+<tr><td>200,000 × 102 written / merged</td><td>2.67 / 2.34 s</td><td>10.5 / 10.9 s</td><td>5.3 / 5.6 s</td><td>2.83 / 2.95 s</td><td>1.1 / 1.3</td></tr>
+<tr><td>50 MB decompressed</td><td>9 ms</td><td>34 ms</td><td>—</td><td>18 ms</td><td>2.0</td></tr>
+<tr><td>graph: walk of 3 hops (1,022 nodes)</td><td>222 ms</td><td>1,443 ms</td><td>1,372 ms</td><td>25 ms</td><td>0.11</td></tr>
+<tr><td>graph: a node's neighbors</td><td>3.0 ms</td><td>12 ms</td><td>12 ms</td><td>4 ms</td><td>1.3</td></tr>
+<tr><td>finch's bars copied / merged</td><td>17 / 14.5 s</td><td>45 / 58 s</td><td>42 / 51 s</td><td>31 / 46 s</td><td>1.8 / 3.2</td></tr>
+<tr><td>finch's NBBO copied / merged</td><td>18.5 / 15 s</td><td>76 / 64 s</td><td>70 / 60 s</td><td>67 / 54 s</td><td>3.6 / 3.6</td></tr>
+<tr><td>finch's five questions, from the files</td><td>9 / 4 / 17 / 73 / 72 ms</td><td>17 / 15 / 43 / 172 / 72</td><td>16 / 14 / 42 / 174 / 70</td><td>10 / 10 / 36 / 107 / 56</td><td>0.8 to 2.5</td></tr>
+<tr><td>finch's five questions, rows held</td><td>3 / 1 / 3 / 24 / 54 ms</td><td>1 / 1 / 2 / 22 / 18</td><td>1 / 1 / 2 / 23 / 18</td><td>1 / 1 / 2 / 21 / 18</td><td>0.3 to 1.0</td></tr>
+</tbody></table>
+<p>The answers agree with ClickHouse's in every run; the copies of the
+month met ClickHouse dropping connections and the driver reconnecting
+(five times in the last run), which their times include. The walk's
+0.11 is the graph package reading a hop's whole frontier as one range of
+the edges' log (below), where the kernel's version looked each node up.</p>
+<p>What the measures found, each fixed with its test:</p>
+<ul>
+<li><strong>The sequencer flushed one put at a time.</strong> A flush wrote and synced
+its file inside <code>revise</code>, holding the tail's lock, and a put waits on
+that lock: each put waited out the last one's fsync, then asked a
+flush of its own row (2,000 files of one row; 61 s of system time).
+The kernel held the lock for its write too, but flushed from a timer
+every 10 ms, so puts gathered between flushes. Now the flush claims
+the pending parts under the lock, writes them outside it and lets
+them go under it (<code>_claimed</code>, <code>_written</code>, <code>_settled</code>): the puts that
+arrive during a write join the next flush, with no timer. The write
+goes to a file of the claim's own, linked into the batch's name under
+the lock only while the claim holds (<code>_committed</code>): <code>rm</code> forgets the
+tail before it removes the directory, so a log removed while its flush
+ran keeps none of its rows. A flush written wholly outside the lock
+had put them into the log made again at the path, and trimmed that
+log's own pending rows as it settled (parity 434). A listing
+that met a flush between its two reads begins the pending rows past
+the file that covers them (<code>_uncovered</code>), and <code>pending_rows</code> cuts at
+both ends, so no row is read twice or missed.</li>
+<li><strong>A revision that can fail copies the record first.</strong> A put's and an
+image's revisions answered errors, so every put and every <code>latest</code>
+copied the tail with its pending parts; they answer a refusal in the
+record now (<code>refused</code>), and <code>latest</code> is the kernel's again.</li>
+<li><strong>An item of an item was copied whole.</strong> <code>by_cells[k][i]</code> compiled to a
+copy of <code>by_cells[k]</code> for each read — the summary copied a group's
+cells once per row and column (quadratic in the group's size). The
+emitter reads the inner item where it lies (<code>item_place</code>).</li>
+<li><strong>A value a guard made known good was copied where it was lent.</strong> A
+reader handed to <code>entries[r, c]</code> carried its whole footer into a copy
+at every call, and a search's positions were copied per row it scored.</li>
+<li><strong>A search read a whole group for each of its k rows</strong>, reopening the
+file (its footer parsed again) each time, and opened the file again
+for every group it scored. The kernel kept its readers and a map of
+the groups it had read; the port does now.</li>
+<li><strong>A 64-bit hash ran on growing ints.</strong> The width pass read <code>bitxor</code> of
+a side spanning [-2^63, 2^63 - 1] as 65 bits, so the bloom filter's
+FNV and murmur over every cell a merge writes were big-int
+arithmetic; and a vector column's distinct count formatted 512 bytes
+of hex per row through <code>format!</code>.</li>
+<li><strong><code>nearest</code> indexed rows through a growing int</strong>: <code>row * w</code> is past 64
+bits to the width pass, so every number of every row was read through
+<code>Int::add</code>. It walks the flat list a width at a time now, within the
+list's length.</li>
+</ul>
+<p>The second round (2026-10-28 to 2026-10-29), each fixed with its test:</p>
+<ul>
+<li><strong>The decoders ran on growing ints.</strong> A bit-packed column's decode
+read through a cursor and a count the width pass could not bound, and
+an <code>unpack</code> of 1, 2 or 4 bytes was any 64-bit int to it. Each width has
+a loop of its own now, written so the pass bounds the bits held, and an
+unpack reads within what its bytes spell (<code>IntRange::Unpacked</code>): a
+column's scan over finch's 11.3 million bars, 224 → 79 ms.</li>
+<li><strong>A graph's hop read the log once per node.</strong> A hop of more than four
+nodes reads its frontier as one range of the edges' log (packages/kg,
+<code>_hop</code>): a walk of 3 hops, 1,372 → 25 ms.</li>
+<li><strong>Bytes appended from a range were two copies.</strong> <code>concat[a, slice[b, i, j]]</code> made the slice, then appended it; the lowering fuses it
+(<code>core.__concat_slice</code>, and <code>a = concat[a, slice[a, i, j]]</code> into
+<code>core.__extend_within</code>), and the decompressor copies an overlapping
+match as whole repeats, doubling each time: 50 MB decompressed, 34 →
+18 ms.</li>
+<li><strong>A scanned search placed every word of every text</strong> in the text's map
+of words. It places the words the query asks, unless a prefix or a
+fuzzy word asks of every word; it reads a field of a hit where it lies
+(a compiled program had copied a record that can fail out whole at
+each field read); and <code>sys.tokens</code> reads ASCII text a byte at a time:
+105 → 53 ms.</li>
+<li><strong>The summary was a record per cell.</strong> A unit's rows are grouped once,
+by one int column through a map of ints, a column of numbers keeps its
+partials per group as numbers, and the groups' counts are added where
+they are held, so the width pass bounds them (through a local, every
+row's count had been a growing int): 109 → 6.9 ms, the answers the
+same to the digit.</li>
+<li><strong>A merge skipped a lone batch,</strong> so whether a key's older versions
+were folded depended on where a flush had cut the rows into files —
+which a compiled program's flush thread decides by its timing (parity
+303 counted a summary differently in one run of three). It folds a
+lone batch too.</li>
+<li><strong>The writes looked a map up per cell, and the bloom filter's slots
+grew.</strong> A number column's distinct values are found by sorting them,
+and 2^64 modulo the filter's size is computed so the width pass bounds
+it: 200,000 × 102 written 5.3 → 2.83 s, merged 5.6 → 2.95 s, the files
+the same byte for byte.</li>
+</ul>
+<p>What is left, and why:</p>
+<ul>
+<li><strong>Every read parses the file's footer again</strong>, and every <code>entries</code>
+call its block: the kernel kept both for the process (keyed by path,
+size and change time). Decided (Vijay, 2026-10-28): nothing is kept
+between calls — process memory is the standard library's and a
+program's never, and a form a derivation could call to keep a record
+was declined — so the reads are made cheap instead (the second round's
+first two items, and a read parsing only the groups and columns it
+asks). What keeping nothing still costs: the indexed search
+decompresses every index block it reads at every call, two fifths of
+its time in the decompressor's copies (2.4, where the kernel kept the
+blocks it had read), and <code>nearest</code> reads its column of vectors from
+the file at every call, 51 MB at 100,000 × 64 — two fifths of its time
+in <code>read</code> from the page cache and a quarter making numbers of the
+bytes (2.4, where the kernel kept them). A read of a region into
+numbers where they land, or a mapped file, would narrow both without
+keeping anything.</li>
+<li><strong>The summary</strong>, 3.5: each row's group is found through a map (a
+lookup to ask, another to read), each cell's presence is a call reading
+the bitmap, and the key column and the positions are decoded whole,
+where the kernel grouped in Rust over the column's bytes.</li>
+<li><strong>The scanned search</strong>, 4.8: each text is split into a list of words,
+a string allocated per word, and each word is matched against the
+asked words' map, where the kernel hashed the words where they lay. A
+row that counts the asked words of a text in the runtime would close
+most of it; it would be a native kernel, which design rule 20 asks a
+reason for.</li>
+<li><strong>finch's copies and merges</strong>, 1.8 to 3.6: a copy writes through
+<code>batch</code> by the table's keys, so each row's key is made into text and
+its position kept under a name of its own in process memory
+(<code>&lt;dir&gt;/#last/&lt;key&gt;</code>), behind the registry's lock and hash — 30
+million names for the month's bars and quotes, where the kernel kept
+one hash map per log. The newest row of each key is already built when
+first asked; the index built the same way would take it off a bulk
+write. A merge's time is mostly the validity bitmaps made again from
+truths, the encoder and its compression.</li>
+<li><strong>Growing ints at the edges.</strong> 41 of the modules' functions still take
+or answer a growing int — a position, a count, a batch's number — a few
+operations per call; in the profiles of the measures above they are at
+most a percent or two of the time.</li>
+</ul>
+<h2 id="5-open-for-vijay"><a class="anchor" href="#5-open-for-vijay">5. Open for Vijay</a></h2>
+<ul>
+<li>The flush through <code>later</code>: a put under <code>crow run -i</code> is durable when
+it answers, and slower for it (2.4).</li>
+<li><code>move</code> for a file's rename, since <code>rename</code> is the frame module's.</li>
+<li>The sequencer's key index built when first asked, as the image is,
+which would take a name per row off a bulk write (4.2: finch's copies).</li>
+<li>A native row that counts a text's asked words, for the scanned search
+(4.2; design rule 20 asks its reason).</li>
+<li>A read of a file's region into numbers where they land, or a mapped
+file, for <code>nearest</code> and the indexed search under "nothing kept between
+calls" (4.2).</li>
+</ul><nav class="doc-pager"><a class="prev" href="design.html" rel="prev"><span>Previous</span>The Design</a><a class="next" href="measuring.html" rel="next"><span>Next</span>Measuring Magpie</a></nav></div></div></div>
+<script>(function(){
+var b=document.body,key='crow-doc-nav';
+try{if(localStorage.getItem(key)==='closed')b.classList.add('nav-closed');}catch(e){}
+document.querySelectorAll('.nav-toggle').forEach(function(t){t.onclick=function(){
+  if(window.innerWidth<1024){b.classList.toggle('nav-open');}
+  else{b.classList.toggle('nav-closed');try{localStorage.setItem(key,b.classList.contains('nav-closed')?'closed':'open');}catch(e){}}
+};});
+document.addEventListener('click',function(e){if(b.classList.contains('nav-open')&&!e.target.closest('.doc-side')&&!e.target.closest('.nav-toggle'))b.classList.remove('nav-open');});
+var cur=document.querySelector('.doc-nav .current');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'center'});
+var box=document.querySelector('.doc-search'),res=document.querySelector('.doc-results');
+if(box&&res){
+  var title=document.querySelector('.doc-top .title'),up=title?title.getAttribute('href').replace('index.html',''):'',index=null;
+  function load(cb){if(index)return cb();fetch(up+'search.json').then(function(r){return r.json();}).then(function(j){index=j;cb();}).catch(function(){index=[];cb();});}
+  function esc(t){return t.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function search(q){
+    var words=q.toLowerCase().split(/\s+/).filter(Boolean);if(!words.length){res.hidden=true;res.innerHTML='';return;}
+    var hits=[];
+    index.forEach(function(e){var t=e.t.toLowerCase(),x=e.x.toLowerCase(),score=0,pos=-1;
+      words.forEach(function(w){if(t.indexOf(w)>=0)score+=10;var i=x.indexOf(w);if(i>=0){score+=1;if(pos<0)pos=i;}else if(t.indexOf(w)<0)score-=100;});
+      if(score>0)hits.push({e:e,score:score,pos:pos});});
+    hits.sort(function(a,b){return b.score-a.score;});
+    hits=hits.slice(0,8);
+    if(!hits.length){res.innerHTML='<p class="none">No matches</p>';res.hidden=false;return;}
+    res.innerHTML=hits.map(function(h){var x=h.e.x,p=h.pos<0?0:Math.max(0,h.pos-60),snip=(p>0?'… ':'')+x.slice(p,p+140)+(p+140<x.length?' …':'');
+      return '<a href="'+up+h.e.p+'"><b>'+esc(h.e.t)+'</b><span>'+esc(snip)+'</span></a>';}).join('');
+    res.hidden=false;
+  }
+  box.addEventListener('input',function(){load(function(){search(box.value);});});
+  box.addEventListener('focus',function(){load(function(){});});
+  box.addEventListener('keydown',function(e){if(e.key==='Escape'){box.value='';res.hidden=true;box.blur();}if(e.key==='Enter'){var a=res.querySelector('a');if(a)a.click();}});
+  document.addEventListener('keydown',function(e){if(e.key==='/'&&document.activeElement!==box&&!(document.activeElement&&document.activeElement.isContentEditable)){e.preventDefault();box.focus();}});
+  document.addEventListener('click',function(e){if(!e.target.closest('.doc-results')&&e.target!==box)res.hidden=true;});
+}
+})();
+(function(){
+var running={};
+function setup(run){
+  var code=run.querySelector('code'),gutter=run.querySelector('.gutter'),cap=run.querySelector('.crow-caption'),out=run.querySelector('.crow-result');
+  var expCap=run.querySelector('.crow-caption.expected'),expPre=run.querySelector('pre.expected');
+  var original=code.textContent,serves=run.getAttribute('data-mode')==='norun';
+  var expected=expPre?expPre.textContent.replace(/\s+$/,''):null;
+  var id=Math.random().toString(36).slice(2);
+  function renumber(){var n=code.textContent.replace(/\n$/,'').split('\n').length,a=[];for(var i=1;i<=n;i++)a.push(i);gutter.textContent=a.join('\n');}
+  function edited(){return code.textContent!==original;}
+  function show(text,kind,note){out.hidden=false;cap.hidden=false;out.className='output crow-result '+(kind||'');out.textContent=text;cap.textContent=note||'';if(expPre){expPre.hidden=true;expCap.hidden=true;}}
+  function go(mode){
+    var src=code.textContent;serves=serves||/^\s*serve\[/m.test(src);
+    if(serves){var m=src.match(/serve\[\s*(\d+)/);show('crow run … compiling, then serving. When it is up, open http://localhost:'+(m?m[1]:'3000')+'/ in a new tab. Press ■ Stop to end it; its output appears here afterwards.','busy');}
+    else show('crow '+(mode==='test'?'test':mode==='compile'?'run':'run -i')+' … ('+(mode==='compile'?'compiling to Rust, ~20s the first time':'starting')+')','busy');
+    running[id]=true;
+    fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,code:src,mode:mode})})
+    .then(function(r){return r.json();}).then(function(res){
+      delete running[id];var text=res.output||'';if(res.timeout)text+='\n[stopped: '+res.timeout+']';if(serves)text='server stopped\n'+text;
+      var kind='',note='';
+      if(expected!==null&&!serves&&!edited()&&mode!=='test'){var same=text.replace(/\s+$/,'')===expected;note=same?'output — matches the book ✓':'output — differs from the book (expected: '+expected.split('\n').join(' ⏎ ')+')';if(!same)kind='fail';}
+      else note=mode==='test'?'crow test':serves?'server output':edited()?'output — of your edited version':'output';
+      show(text.length?text:'(no output)',kind||(res.ok||serves?'ok':'fail'),note);
+    }).catch(function(){delete running[id];show('No runner on this page. Start one from the repository:\n\n    crow book\n\nthen reload — every block gets a real ▶ Run button.','fail');});
+  }
+  function stop(){fetch('/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(){show('stopped','fail');}).catch(function(){});}
+  code.addEventListener('input',renumber);
+  code.addEventListener('keydown',function(e){
+    if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ');}
+    if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();go(serves?'compile':'interp');}
+  });
+  run.querySelectorAll('button[data-action]').forEach(function(b){
+    var a=b.getAttribute('data-action');
+    b.onclick=function(){if(a==='reset'){code.textContent=original;renumber();}else if(a==='stop')stop();else go(a);};
+  });
+}
+document.querySelectorAll('.crow-run').forEach(setup);
+})();</script>
+</body>
+</html>
